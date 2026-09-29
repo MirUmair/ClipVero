@@ -5,11 +5,18 @@ import { colors } from '../theme/colors';
 import { Header } from '../components/common/Header';
 import { Modal } from '../components/common/Modal';
 import { Button } from '../components/common/Button';
-import { Project, MediaClip, TextLayer, AudioTrack } from '../types/project';
+import {
+  Project,
+  MediaClip,
+  TextLayer,
+  AudioTrack,
+  ClipTransition,
+} from '../types/project';
 import { useAppNavigation } from '../navigation/navigationContext';
 import { VideoPreviewPlayer } from '../editor/preview/VideoPreviewPlayer';
 import { PreviewControls } from '../editor/preview/PreviewControls';
 import { TimelineView } from '../editor/timeline/TimelineView';
+import { TransitionModal } from '../editor/transitions/TransitionModal';
 import {
   EditorBottomToolbar,
   MainCategory,
@@ -85,6 +92,10 @@ export const EditorScreen: React.FC = () => {
   const [stickersModalVisible, setStickersModalVisible] = useState(false);
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [audioModalVisible, setAudioModalVisible] = useState(false);
+  const [transitionModalVisible, setTransitionModalVisible] = useState(false);
+  const [transitionTargetClipId, setTransitionTargetClipId] = useState<
+    string | null
+  >(null);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [renameText, setRenameText] = useState('');
 
@@ -368,12 +379,40 @@ export const EditorScreen: React.FC = () => {
     updateProject({ ...project, clips: newClips });
   };
 
+  // 9. Clip Transitions
+  const handleOpenTransition = (clip?: MediaClip) => {
+    HapticsService.light();
+    setTransitionTargetClipId(clip ? clip.id : selectedClip?.id || null);
+    setTransitionModalVisible(true);
+  };
+
+  const handleSelectTransition = (trans: ClipTransition) => {
+    const targetId = transitionTargetClipId || selectedClip?.id;
+    if (!targetId) return;
+    const newClips = project.clips.map(c =>
+      c.id === targetId ? { ...c, transition: trans } : c,
+    );
+    updateProject({ ...project, clips: newClips });
+  };
+
+  const handleApplyTransitionToAll = (trans: ClipTransition) => {
+    HapticsService.medium();
+    const newClips = project.clips.map(c => ({
+      ...c,
+      transition: { ...trans },
+    }));
+    updateProject({ ...project, clips: newClips });
+  };
+
   // --- SUBTOOL ACTION DISPATCHER ---
 
   const handleEditAction = (action: EditSubAction) => {
     switch (action) {
       case 'split':
         handleSplitClip();
+        break;
+      case 'transition':
+        handleOpenTransition();
         break;
       case 'speed':
         setSpeedModalVisible(true);
@@ -582,6 +621,7 @@ export const EditorScreen: React.FC = () => {
         onSeek={handleSeek}
         onTrimClip={handleTrimClip}
         onAddMedia={() => navigation.navigate('MediaPicker')}
+        onTransitionPress={handleOpenTransition}
         onSelectTextLayer={layer => {
           setSelectedTextLayer(layer);
           setTextModalVisible(true);
@@ -604,10 +644,24 @@ export const EditorScreen: React.FC = () => {
         onAdjustPress={() => setAdjustModalVisible(true)}
         onRatioPress={() => setRatioModalVisible(true)}
         onStickersPress={() => setStickersModalVisible(true)}
+        onTransitionPress={() => handleOpenTransition()}
         hasSelectedClip={!!selectedClip}
       />
 
       {/* Modals */}
+      <TransitionModal
+        visible={transitionModalVisible}
+        onClose={() => setTransitionModalVisible(false)}
+        currentTransition={
+          (transitionTargetClipId
+            ? project.clips.find(c => c.id === transitionTargetClipId)
+                ?.transition
+            : selectedClip?.transition) || { type: 'none', duration: 0.5 }
+        }
+        onSelectTransition={handleSelectTransition}
+        onApplyToAll={handleApplyTransitionToAll}
+      />
+
       <SpeedSelectorModal
         visible={speedModalVisible}
         onClose={() => setSpeedModalVisible(false)}

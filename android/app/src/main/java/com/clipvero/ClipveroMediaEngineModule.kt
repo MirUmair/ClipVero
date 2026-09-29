@@ -1,6 +1,8 @@
 package com.clipvero
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -10,6 +12,7 @@ import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
@@ -21,7 +24,9 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
+import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -46,6 +51,125 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     private var isCancelled = false
     private var progressRunnable: Runnable? = null
 
+    private var pendingPickerPromise: Promise? = null
+    private val PICK_MEDIA_REQUEST_CODE = 41234
+
+    private val activityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
+        override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+            if (requestCode == PICK_MEDIA_REQUEST_CODE) {
+                val promise = pendingPickerPromise
+                pendingPickerPromise = null
+                if (promise == null) return
+
+                if (resultCode != Activity.RESULT_OK || data == null) {
+                    promise.resolve(Arguments.createArray())
+                    return
+                }
+
+                executor.execute {
+                    try {
+                        val results = Arguments.createArray()
+                        val clipData = data.clipData
+                        val singleUri = data.data
+
+                        val uris = ArrayList<Uri>()
+                        if (clipData != null) {
+                            for (i in 0 until clipData.itemCount) {
+                                uris.add(clipData.getItemAt(i).uri)
+                            }
+                        } else if (singleUri != null) {
+                            uris.add(singleUri)
+                        }
+
+                        val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
+                        if (!cacheDir.exists()) cacheDir.mkdirs()
+
+                        for (uri in uris) {
+                            try {
+                                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                reactContext.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                            } catch (_: Exception) {}
+
+                            val retriever = MediaMetadataRetriever()
+                            var durationSec = 10.0
+                            var width = 1080
+                            var height = 1920
+                            var thumbUriStr: String? = null
+                            var name = "Clip_${System.currentTimeMillis()}"
+
+                            try {
+                                try {
+                                    val cursor = reactContext.contentResolver.query(uri, null, null, null, null)
+                                    cursor?.use {
+                                        if (it.moveToFirst()) {
+                                            val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                            if (nameIndex >= 0) {
+                                                val dispName = it.getString(nameIndex)
+                                                if (!dispName.isNullOrEmpty()) name = dispName
+                                            }
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+
+                                if (uri.scheme == "content") {
+                                    retriever.setDataSource(reactContext, uri)
+                                } else {
+                                    retriever.setDataSource(uri.path)
+                                }
+
+                                val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                val wStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                                val hStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+
+                                if (durStr != null) {
+                                    val ms = durStr.toLongOrNull() ?: 10000L
+                                    durationSec = ms / 1000.0
+                                }
+                                if (wStr != null) width = wStr.toIntOrNull() ?: 1080
+                                if (hStr != null) height = hStr.toIntOrNull() ?: 1920
+
+                                val bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                                    ?: retriever.frameAtTime
+                                if (bitmap != null) {
+                                    val scaled = Bitmap.createScaledBitmap(bitmap, 240, 240, true)
+                                    val thumbFile = File(cacheDir, "picked_${System.currentTimeMillis()}_${(Math.random() * 1000).toInt()}.jpg")
+                                    FileOutputStream(thumbFile).use { out ->
+                                        scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                                    }
+                                    thumbUriStr = "file://${thumbFile.absolutePath}"
+                                    if (scaled != bitmap) scaled.recycle()
+                                    bitmap.recycle()
+                                }
+                            } catch (_: Exception) {
+                            } finally {
+                                try { retriever.release() } catch (_: Exception) {}
+                            }
+
+                            val itemMap = Arguments.createMap()
+                            itemMap.putString("uri", uri.toString())
+                            itemMap.putString("name", name)
+                            itemMap.putString("type", "video")
+                            itemMap.putDouble("duration", durationSec)
+                            itemMap.putDouble("originalDuration", durationSec)
+                            itemMap.putInt("width", width)
+                            itemMap.putInt("height", height)
+                            itemMap.putString("thumbnailUri", thumbUriStr ?: uri.toString())
+                            results.pushMap(itemMap)
+                        }
+
+                        promise.resolve(results)
+                    } catch (e: Exception) {
+                        promise.reject("PICK_ERROR", "Failed to process picked media: ${e.message}", e)
+                    }
+                }
+            }
+        }
+    }
+
+    init {
+        reactContext.addActivityEventListener(activityEventListener)
+    }
+
     override fun getName(): String = "ClipveroMediaEngine"
 
     private fun sendEvent(eventName: String, params: WritableMap?) {
@@ -53,8 +177,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
             reactContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                 .emit(eventName, params)
-        } catch (e: Exception) {
-            // Context might not be active
+        } catch (_: Exception) {
         }
     }
 
@@ -67,13 +190,51 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     }
 
     @ReactMethod
+    fun pickMedia(promise: Promise) {
+        val activity = reactContext.currentActivity
+        if (activity == null) {
+            promise.reject("NO_ACTIVITY", "Current activity is null")
+            return
+        }
+
+        pendingPickerPromise = promise
+
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("video/*", "image/*"))
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
+            activity.startActivityForResult(intent, PICK_MEDIA_REQUEST_CODE)
+        } catch (_: Exception) {
+            try {
+                val fallbackIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("video/*", "image/*"))
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+                activity.startActivityForResult(fallbackIntent, PICK_MEDIA_REQUEST_CODE)
+            } catch (e2: Exception) {
+                pendingPickerPromise = null
+                promise.reject("LAUNCH_PICKER_ERROR", "Failed to launch media picker: ${e2.message}", e2)
+            }
+        }
+    }
+
+    @ReactMethod
     fun getVideoMetadata(uriStr: String, promise: Promise) {
         executor.execute {
             val retriever = MediaMetadataRetriever()
             try {
                 val uri = parseUri(uriStr)
-                if (uri.scheme == "content") {
-                    retriever.setDataSource(reactContext, uri)
+                if (uriStr.startsWith("content://")) {
+                    reactContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        retriever.setDataSource(pfd.fileDescriptor)
+                    } ?: run {
+                        retriever.setDataSource(reactContext, uri)
+                    }
                 } else {
                     retriever.setDataSource(uri.path)
                 }
@@ -99,7 +260,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
 
                 promise.resolve(map)
             } catch (e: Exception) {
-                promise.reject("METADATA_ERROR", "Failed to retrieve metadata: ${e.message}", e)
+                promise.reject("METADATA_ERROR", "Could not extract metadata: ${e.message}", e)
             } finally {
                 try {
                     retriever.release()
@@ -114,39 +275,44 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
             val retriever = MediaMetadataRetriever()
             try {
                 val uri = parseUri(uriStr)
-                if (uri.scheme == "content") {
-                    retriever.setDataSource(reactContext, uri)
+                if (uriStr.startsWith("content://")) {
+                    reactContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        retriever.setDataSource(pfd.fileDescriptor)
+                    } ?: run {
+                        retriever.setDataSource(reactContext, uri)
+                    }
                 } else {
                     retriever.setDataSource(uri.path)
                 }
 
-                val timeUs = (timeSec * 1_000_000).toLong()
+                val timeUs = (timeSec * 1000000).toLong()
                 val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                     ?: retriever.frameAtTime
 
-                if (bitmap == null) {
-                    promise.reject("THUMBNAIL_ERROR", "Could not extract frame at $timeSec s")
-                    return@execute
+                if (bitmap != null) {
+                    val scaled = if (width > 0 && height > 0) {
+                        Bitmap.createScaledBitmap(bitmap, width, height, true)
+                    } else {
+                        bitmap
+                    }
+
+                    val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
+                    if (!cacheDir.exists()) cacheDir.mkdirs()
+
+                    val thumbFile = File(cacheDir, "thumb_${System.currentTimeMillis()}_${(timeSec * 10).toInt()}.jpg")
+                    FileOutputStream(thumbFile).use { out ->
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                    }
+
+                    if (scaled != bitmap) scaled.recycle()
+                    bitmap.recycle()
+
+                    promise.resolve("file://${thumbFile.absolutePath}")
+                } else {
+                    promise.reject("THUMBNAIL_ERROR", "Could not extract frame at $timeSec")
                 }
-
-                val targetW = if (width > 0) width else 240
-                val targetH = if (height > 0) height else (bitmap.height * targetW / bitmap.width)
-                val scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
-
-                val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
-                if (!cacheDir.exists()) cacheDir.mkdirs()
-
-                val thumbFile = File(cacheDir, "thumb_${System.currentTimeMillis()}_${(Math.random() * 1000).toInt()}.jpg")
-                FileOutputStream(thumbFile).use { out ->
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
-                }
-
-                if (scaled != bitmap) scaled.recycle()
-                bitmap.recycle()
-
-                promise.resolve("file://${thumbFile.absolutePath}")
             } catch (e: Exception) {
-                promise.reject("THUMBNAIL_ERROR", "Thumbnail error: ${e.message}", e)
+                promise.reject("THUMBNAIL_ERROR", "Error extracting thumbnail: ${e.message}", e)
             } finally {
                 try {
                     retriever.release()
@@ -161,41 +327,46 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
             val retriever = MediaMetadataRetriever()
             try {
                 val uri = parseUri(uriStr)
-                if (uri.scheme == "content") {
-                    retriever.setDataSource(reactContext, uri)
+                if (uriStr.startsWith("content://")) {
+                    reactContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        retriever.setDataSource(pfd.fileDescriptor)
+                    } ?: run {
+                        retriever.setDataSource(reactContext, uri)
+                    }
                 } else {
                     retriever.setDataSource(uri.path)
                 }
 
-                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 1000L
-                val numThumbs = count.coerceIn(1, 20)
-                val intervalMs = durationMs / numThumbs
+                val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val durationMs = durStr?.toLongOrNull() ?: 10000L
+                val durationUs = durationMs * 1000L
 
-                val cacheDir = File(reactContext.cacheDir, "clipvero_timeline_thumbs")
+                val intervalUs = if (count > 1) durationUs / (count - 1) else 0L
+                val thumbs = Arguments.createArray()
+
+                val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
 
-                val results: WritableArray = Arguments.createArray()
-
-                for (i in 0 until numThumbs) {
-                    val frameTimeUs = (i * intervalMs + intervalMs / 2) * 1000L
-                    val bitmap = retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                for (i in 0 until count) {
+                    val targetUs = i * intervalUs
+                    val bitmap = retriever.getFrameAtTime(targetUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                         ?: retriever.frameAtTime
 
                     if (bitmap != null) {
-                        val scaled = Bitmap.createScaledBitmap(bitmap, 120, 80, true)
+                        val scaled = Bitmap.createScaledBitmap(bitmap, 120, 120, true)
                         val thumbFile = File(cacheDir, "tl_${System.currentTimeMillis()}_${i}.jpg")
                         FileOutputStream(thumbFile).use { out ->
                             scaled.compress(Bitmap.CompressFormat.JPEG, 70, out)
                         }
                         if (scaled != bitmap) scaled.recycle()
                         bitmap.recycle()
-                        results.pushString("file://${thumbFile.absolutePath}")
+                        thumbs.pushString("file://${thumbFile.absolutePath}")
                     }
                 }
 
-                promise.resolve(results)
+                promise.resolve(thumbs)
             } catch (e: Exception) {
-                promise.reject("TIMELINE_THUMB_ERROR", "Failed to extract timeline thumbnails: ${e.message}", e)
+                promise.reject("TIMELINE_THUMBNAIL_ERROR", "Failed to generate timeline frames: ${e.message}", e)
             } finally {
                 try {
                     retriever.release()
@@ -207,79 +378,97 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     @ReactMethod
     fun extractAudio(videoUriStr: String, outputName: String, promise: Promise) {
         executor.execute {
-            val extractor = MediaExtractor()
+            var extractor: MediaExtractor? = null
             var muxer: MediaMuxer? = null
             try {
-                val uri = parseUri(videoUriStr)
-                if (uri.scheme == "content") {
-                    extractor.setDataSource(reactContext, uri, null)
+                val videoUri = parseUri(videoUriStr)
+                extractor = MediaExtractor()
+
+                if (videoUriStr.startsWith("content://")) {
+                    reactContext.contentResolver.openFileDescriptor(videoUri, "r")?.use { pfd ->
+                        extractor.setDataSource(pfd.fileDescriptor)
+                    } ?: run {
+                        extractor.setDataSource(reactContext, videoUri, null)
+                    }
                 } else {
-                    extractor.setDataSource(uri.path!!)
+                    extractor.setDataSource(videoUri.path!!)
                 }
 
                 var audioTrackIndex = -1
+                var audioFormat: MediaFormat? = null
+
                 for (i in 0 until extractor.trackCount) {
                     val format = extractor.getTrackFormat(i)
                     val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
                     if (mime.startsWith("audio/")) {
                         audioTrackIndex = i
+                        audioFormat = format
                         break
                     }
                 }
 
-                if (audioTrackIndex < 0) {
-                    promise.reject("NO_AUDIO", "No audio track found in the media")
+                if (audioTrackIndex == -1 || audioFormat == null) {
+                    promise.reject("NO_AUDIO_TRACK", "No audio track found in the source video.")
                     return@execute
                 }
 
                 extractor.selectTrack(audioTrackIndex)
-                val format = extractor.getTrackFormat(audioTrackIndex)
 
-                val exportDir = File(reactContext.filesDir, "extracted_audio")
-                if (!exportDir.exists()) exportDir.mkdirs()
-                val outputFile = File(exportDir, "${outputName}_${System.currentTimeMillis()}.m4a")
+                val audioDir = File(reactContext.filesDir, "extracted_audio")
+                if (!audioDir.exists()) audioDir.mkdirs()
 
+                val outputFile = File(audioDir, "${outputName}_${System.currentTimeMillis()}.m4a")
                 muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                val muxerTrack = muxer.addTrack(format)
+                val muxerAudioTrack = muxer.addTrack(audioFormat)
                 muxer.start()
 
-                val buffer = ByteBuffer.allocate(1024 * 1024)
+                val maxBufferSize = if (audioFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
+                } else {
+                    128 * 1024
+                }
+
+                val buffer = ByteBuffer.allocate(maxBufferSize)
                 val bufferInfo = MediaCodec.BufferInfo()
 
                 while (true) {
+                    bufferInfo.offset = 0
                     bufferInfo.size = extractor.readSampleData(buffer, 0)
-                    if (bufferInfo.size < 0) break
+                    if (bufferInfo.size < 0) {
+                        bufferInfo.size = 0
+                        break
+                    }
                     bufferInfo.presentationTimeUs = extractor.sampleTime
                     bufferInfo.flags = extractor.sampleFlags
-                    muxer.writeSampleData(muxerTrack, buffer, bufferInfo)
+
+                    muxer.writeSampleData(muxerAudioTrack, buffer, bufferInfo)
                     extractor.advance()
                 }
 
+                muxer.stop()
                 promise.resolve("file://${outputFile.absolutePath}")
+
             } catch (e: Exception) {
-                promise.reject("EXTRACT_AUDIO_ERROR", "Audio extraction failed: ${e.message}", e)
+                promise.reject("AUDIO_EXTRACT_ERROR", "Audio extraction failed: ${e.message}", e)
             } finally {
-                try {
-                    extractor.release()
-                    muxer?.stop()
-                    muxer?.release()
-                } catch (_: Exception) {}
+                try { extractor?.release() } catch (_: Exception) {}
+                try { muxer?.release() } catch (_: Exception) {}
             }
         }
     }
 
     @ReactMethod
-    fun exportProject(configJsonStr: String, promise: Promise) {
+    fun exportProject(configJson: String, promise: Promise) {
         executor.execute {
             try {
                 isCancelled = false
-                val config = JSONObject(configJsonStr)
-                val clipsArray = config.getJSONArray("clips")
-                val exportSettings = config.optJSONObject("exportSettings")
-                val projectName = config.optString("name", "Clipvero_Export")
+                val projectObj = JSONObject(configJson)
+                val projectName = projectObj.optString("name", "Clipvero_Export")
+                val clipsArray = projectObj.getJSONArray("clips")
+                val exportSettings = projectObj.optJSONObject("exportSettings")
 
                 if (clipsArray.length() == 0) {
-                    promise.reject("EMPTY_PROJECT", "No clips to export")
+                    promise.reject("NO_CLIPS", "Cannot export project with 0 clips.")
                     return@execute
                 }
 
@@ -301,7 +490,6 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 val outputFile = File(exportDir, "${projectName}_${System.currentTimeMillis()}.mp4")
                 activeOutputFile = outputFile
 
-                // Build Media3 EditedMediaItemSequence for seamless multi-clip composition
                 val editedMediaItems = ArrayList<EditedMediaItem>()
 
                 for (i in 0 until clipsArray.length()) {
@@ -312,6 +500,8 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     val trimStartSec = clipObj.optDouble("trimStart", 0.0)
                     val trimEndSec = clipObj.optDouble("trimEnd", -1.0)
                     val rotationDeg = clipObj.optInt("rotation", 0)
+                    val transitionObj = clipObj.optJSONObject("transition")
+                    val transitionType = transitionObj?.optString("type", "none") ?: "none"
 
                     val mediaItemBuilder = MediaItem.Builder().setUri(uri)
 
@@ -324,9 +514,17 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     mediaItemBuilder.setClippingConfiguration(clippingConfig.build())
 
                     val effectsList = ArrayList<androidx.media3.common.Effect>()
+
+                    // Apply Rotation
                     if (rotationDeg != 0) {
                         effectsList.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotationDeg.toFloat()).build())
                     }
+
+                    // Apply Zoom or Dynamic Transition
+                    if (transitionType == "zoom") {
+                        effectsList.add(ScaleAndRotateTransformation.Builder().setScale(1.12f, 1.12f).build())
+                    }
+
                     effectsList.add(Presentation.createForWidthAndHeight(outWidth, outHeight, Presentation.LAYOUT_SCALE_TO_FIT))
 
                     val effects = Effects(emptyList(), effectsList)
@@ -470,3 +668,4 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         promise.resolve(reactContext.filesDir.absolutePath)
     }
 }
+

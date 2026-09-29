@@ -19,6 +19,7 @@ import { AppIcon } from '../components/icons/AppIcons';
 import { MediaClip, Project } from '../types/project';
 import { useAppNavigation } from '../navigation/navigationContext';
 import { HapticsService } from '../services/hapticsService';
+import { MediaEngine } from '../media/mediaEngine';
 import { formatDuration } from '../utils/timeUtils';
 
 // Sample royalty-free starter footage clips for testing and out-of-the-box editing
@@ -122,6 +123,28 @@ export const MediaPickerScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useAppNavigation();
   const [selectedClips, setSelectedClips] = useState<MediaClip[]>([]);
+  const [isPickingFromDevice, setIsPickingFromDevice] = useState(false);
+
+  const handlePickFromDevice = async () => {
+    try {
+      setIsPickingFromDevice(true);
+      HapticsService.medium();
+      const picked = await MediaEngine.pickMedia();
+      if (picked && picked.length > 0) {
+        HapticsService.success();
+        setSelectedClips(prev => [...prev, ...picked]);
+      }
+    } catch (e: any) {
+      console.warn('Device media pick error:', e);
+      Alert.alert(
+        'Media Picker',
+        'Could not load videos/photos: ' +
+          (e?.message || 'Permission denied or cancelled'),
+      );
+    } finally {
+      setIsPickingFromDevice(false);
+    }
+  };
 
   const handleAddSample = (sample: (typeof SAMPLE_MEDIA)[0]) => {
     HapticsService.light();
@@ -211,6 +234,31 @@ export const MediaPickerScreen: React.FC = () => {
       />
 
       <View style={styles.content}>
+        {/* Device Photo / Video Gallery Picker */}
+        <Pressable
+          style={[
+            styles.devicePickerCard,
+            isPickingFromDevice && styles.devicePickerCardDisabled,
+          ]}
+          onPress={handlePickFromDevice}
+          disabled={isPickingFromDevice}
+        >
+          <View style={styles.devicePickerIconCircle}>
+            <AppIcon name="plus" size={20} color="#FFFFFF" />
+          </View>
+          <View style={styles.devicePickerTextContainer}>
+            <Text style={styles.devicePickerTitle}>
+              {isPickingFromDevice
+                ? 'Opening Gallery...'
+                : 'Choose from Device Gallery'}
+            </Text>
+            <Text style={styles.devicePickerSubtitle}>
+              Select photos and videos stored on your device
+            </Text>
+          </View>
+          <AppIcon name="chevronRight" size={18} color={colors.textMuted} />
+        </Pressable>
+
         {/* Sample / Available Media Gallery */}
         <Text style={styles.sectionHeader}>Available Footage & Samples</Text>
         <View style={styles.samplesGrid}>
@@ -252,6 +300,7 @@ export const MediaPickerScreen: React.FC = () => {
           <FlatList
             data={selectedClips}
             keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
             renderItem={({ item, index }) => (
               <View style={styles.selectedRow}>
                 <Image
@@ -260,7 +309,7 @@ export const MediaPickerScreen: React.FC = () => {
                 />
                 <View style={styles.selectedMeta}>
                   <Text style={styles.clipTitle} numberOfLines={1}>
-                    {index + 1}. {item.name}
+                    {item.name}
                   </Text>
                   <Text style={styles.clipDuration}>
                     {formatDuration(item.duration)}
@@ -270,20 +319,24 @@ export const MediaPickerScreen: React.FC = () => {
                 {/* Reorder Buttons */}
                 <View style={styles.reorderButtons}>
                   <IconButton
-                    name="back"
+                    name="undo"
                     size={28}
                     iconSize={14}
                     onPress={() => handleMoveUp(index)}
-                    disabled={index === 0}
-                    style={{ transform: [{ rotate: '90deg' }] }}
+                    color={
+                      index === 0 ? colors.textMuted : colors.textSecondary
+                    }
                   />
                   <IconButton
-                    name="back"
+                    name="redo"
                     size={28}
                     iconSize={14}
                     onPress={() => handleMoveDown(index)}
-                    disabled={index === selectedClips.length - 1}
-                    style={{ transform: [{ rotate: '-90deg' }] }}
+                    color={
+                      index === selectedClips.length - 1
+                        ? colors.textMuted
+                        : colors.textSecondary
+                    }
                   />
                 </View>
 
@@ -325,6 +378,41 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.base,
   },
+  devicePickerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+  },
+  devicePickerCardDisabled: {
+    opacity: 0.6,
+  },
+  devicePickerIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  devicePickerTextContainer: {
+    flex: 1,
+  },
+  devicePickerTitle: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontSize: 15,
+  },
+  devicePickerSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   sectionHeader: {
     ...typography.captionBold,
     color: colors.textSecondary,
@@ -362,18 +450,17 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#FFFFFF',
     fontWeight: '600',
-    fontVariant: ['tabular-nums'],
   },
   sampleAddOverlay: {
     position: 'absolute',
     top: 4,
     right: 4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyBox: {
     flex: 1,

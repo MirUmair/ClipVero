@@ -5,7 +5,7 @@
  */
 
 import { NativeModules, NativeEventEmitter } from 'react-native';
-import { Project } from '../types/project';
+import { Project, MediaClip } from '../types/project';
 
 const { ClipveroMediaEngine } = NativeModules;
 
@@ -158,6 +158,7 @@ export class MediaEngine {
             volume: c.volume,
             isMuted: c.isMuted,
             rotation: c.rotation,
+            transition: c.transition,
           })),
           exportSettings: project.exportSettings,
         });
@@ -185,6 +186,67 @@ export class MediaEngine {
         subscription.remove();
       }
     }
+  }
+
+  /**
+   * Launch native device photo/video picker and return MediaClip instances
+   */
+  public static async pickMedia(): Promise<MediaClip[]> {
+    if (ClipveroMediaEngine?.pickMedia) {
+      try {
+        const rawItems = await ClipveroMediaEngine.pickMedia();
+        if (Array.isArray(rawItems)) {
+          return rawItems.map((item: any) => ({
+            id: `clip_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 7)}`,
+            uri: item.uri,
+            name: item.name || 'Picked Video',
+            type: item.type === 'image' ? 'image' : 'video',
+            duration:
+              typeof item.duration === 'number' && item.duration > 0
+                ? item.duration
+                : 10.0,
+            originalDuration:
+              typeof item.originalDuration === 'number' &&
+              item.originalDuration > 0
+                ? item.originalDuration
+                : 10.0,
+            trimStart: 0,
+            trimEnd:
+              typeof item.duration === 'number' && item.duration > 0
+                ? item.duration
+                : 10.0,
+            speed: 1.0,
+            volume: 1.0,
+            isMuted: false,
+            rotation: 0,
+            flipHorizontal: false,
+            flipVertical: false,
+            crop: null,
+            filterId: 'none',
+            adjustments: {
+              brightness: 0,
+              contrast: 0,
+              saturation: 0,
+              exposure: 0,
+              temperature: 0,
+              highlights: 0,
+              shadows: 0,
+              sharpen: 0,
+            },
+            transition: { type: 'none', duration: 0.5 },
+            thumbnailUri: item.thumbnailUri || item.uri,
+            width: item.width || 1080,
+            height: item.height || 1920,
+          }));
+        }
+      } catch (e) {
+        console.warn('Native pickMedia error:', e);
+        throw e;
+      }
+    }
+    return [];
   }
 
   /**

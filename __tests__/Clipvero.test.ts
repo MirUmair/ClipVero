@@ -20,6 +20,9 @@ import { generateExportFileName, formatFileSize } from '../src/utils/fileUtils';
 import { ProjectStorage } from '../src/storage/projectStorage';
 import { AutosaveManager } from '../src/storage/autosaveManager';
 import { Project, MediaClip } from '../src/types/project';
+import { TRANSITION_PRESETS } from '../src/editor/transitions/transitionTypes';
+import { AdService, ADMOB_TEST_UNITS } from '../src/services/adService';
+import { MediaEngine } from '../src/media/mediaEngine';
 
 describe('Clipvero Media & Timeline Engine', () => {
   beforeEach(() => {
@@ -358,6 +361,149 @@ describe('Clipvero Media & Timeline Engine', () => {
     it('generates sanitized export file names', () => {
       const filename = generateExportFileName('My Travel Vlog #1');
       expect(filename).toMatch(/^Clipvero_My_Travel_Vlog__1_[0-9]+\.mp4$/);
+    });
+  });
+
+  describe('Clip Transitions Subsystem', () => {
+    it('defines standard original transitions with native support flags', () => {
+      expect(TRANSITION_PRESETS.length).toBe(5);
+      const types = TRANSITION_PRESETS.map(p => p.type);
+      expect(types).toContain('none');
+      expect(types).toContain('fade');
+      expect(types).toContain('dissolve');
+      expect(types).toContain('slide');
+      expect(types).toContain('zoom');
+
+      TRANSITION_PRESETS.forEach(preset => {
+        expect(preset.name).toBeDefined();
+        expect(preset.description).toBeDefined();
+        expect(preset.isSupportedNatively).toBe(true);
+      });
+    });
+
+    it('applies transitions to clips non-destructively', () => {
+      const clip: MediaClip = {
+        id: 'clip_trans_1',
+        uri: 'file:///sample.mp4',
+        name: 'Scene 1',
+        type: 'video',
+        duration: 5.0,
+        originalDuration: 5.0,
+        trimStart: 0,
+        trimEnd: 5.0,
+        speed: 1.0,
+        volume: 1.0,
+        isMuted: false,
+        rotation: 0,
+        flipHorizontal: false,
+        flipVertical: false,
+        crop: null,
+        filterId: 'none',
+        adjustments: {
+          brightness: 0,
+          contrast: 0,
+          saturation: 0,
+          exposure: 0,
+          temperature: 0,
+          highlights: 0,
+          shadows: 0,
+          sharpen: 0,
+        },
+        transition: { type: 'none', duration: 0.5 },
+        width: 1080,
+        height: 1920,
+      };
+
+      expect(clip.transition.type).toBe('none');
+
+      // Update transition
+      const updatedClip = {
+        ...clip,
+        transition: { type: 'dissolve' as const, duration: 0.8 },
+      };
+
+      expect(updatedClip.transition.type).toBe('dissolve');
+      expect(updatedClip.transition.duration).toBe(0.8);
+      // Original clip remains untouched
+      expect(clip.transition.type).toBe('none');
+    });
+  });
+
+  describe('AdService & Non-Intrusive Ad Units', () => {
+    beforeEach(() => {
+      AdService.initialize({
+        adsEnabled: true,
+        isProUser: false,
+        testMode: true,
+      });
+    });
+
+    it('returns official Google AdMob test ad unit IDs', () => {
+      const androidBanner = AdService.getAdUnitId('home_banner', 'android');
+      expect(androidBanner).toBe(ADMOB_TEST_UNITS.android.banner);
+
+      const androidInterstitial = AdService.getAdUnitId(
+        'post_export_interstitial',
+        'android',
+      );
+      expect(androidInterstitial).toBe(ADMOB_TEST_UNITS.android.interstitial);
+
+      const androidRewarded = AdService.getAdUnitId(
+        'rewarded_premium_feature',
+        'android',
+      );
+      expect(androidRewarded).toBe(ADMOB_TEST_UNITS.android.rewarded);
+
+      const iosBanner = AdService.getAdUnitId('home_banner', 'ios');
+      expect(iosBanner).toBe(ADMOB_TEST_UNITS.ios.banner);
+    });
+
+    it('allows ads on Home and Export Result placements when enabled', () => {
+      expect(AdService.shouldShowAd('home_banner')).toBe(true);
+      expect(AdService.shouldShowAd('export_result_banner')).toBe(true);
+      expect(AdService.shouldShowAd('post_export_interstitial')).toBe(true);
+    });
+
+    it('strictly suppresses all ads for Pro users', () => {
+      AdService.setProUser(true);
+      expect(AdService.isPro()).toBe(true);
+      expect(AdService.shouldShowAd('home_banner')).toBe(false);
+      expect(AdService.shouldShowAd('export_result_banner')).toBe(false);
+      expect(AdService.shouldShowAd('post_export_interstitial')).toBe(false);
+    });
+
+    it('suppresses ads when globally disabled', () => {
+      AdService.setAdsEnabled(false);
+      expect(AdService.shouldShowAd('home_banner')).toBe(false);
+    });
+  });
+
+  describe('MediaEngine Native Bridge & Fallbacks', () => {
+    it('returns default fallback video metadata when mock', async () => {
+      const meta = await MediaEngine.getVideoMetadata('file:///dummy.mp4');
+      expect(meta.duration).toBeGreaterThan(0);
+      expect(meta.width).toBe(1080);
+      expect(meta.height).toBe(1920);
+    });
+
+    it('returns thumbnail fallbacks when native module is mocked', async () => {
+      const thumb = await MediaEngine.generateThumbnail(
+        'file:///dummy.mp4',
+        2.0,
+      );
+      expect(thumb).toBe('file:///dummy.mp4');
+
+      const timelineThumbs = await MediaEngine.generateTimelineThumbnails(
+        'file:///dummy.mp4',
+        4,
+      );
+      expect(timelineThumbs.length).toBe(4);
+      expect(timelineThumbs[0]).toBe('file:///dummy.mp4');
+    });
+
+    it('handles pickMedia gracefully in test environment', async () => {
+      const picked = await MediaEngine.pickMedia();
+      expect(Array.isArray(picked)).toBe(true);
     });
   });
 });
