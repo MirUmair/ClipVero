@@ -26,7 +26,7 @@ import { formatDuration } from '../utils/timeUtils';
 const SAMPLE_MEDIA: Array<Omit<MediaClip, 'id'>> = [
   {
     name: 'Sunset Reel.mp4',
-    uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    uri: 'asset:/sample_videos/sample1.mp4',
     type: 'video',
     duration: 15.0,
     originalDuration: 15.0,
@@ -53,11 +53,11 @@ const SAMPLE_MEDIA: Array<Omit<MediaClip, 'id'>> = [
     transition: { type: 'none', duration: 0.5 },
     width: 1080,
     height: 1920,
-    thumbnailUri: 'https://picsum.photos/seed/clipvero1/360/640',
+    thumbnailUri: 'asset:/sample_videos/sample1.mp4',
   },
   {
     name: 'Urban Street.mp4',
-    uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    uri: 'asset:/sample_videos/sample2.mp4',
     type: 'video',
     duration: 12.0,
     originalDuration: 12.0,
@@ -84,11 +84,11 @@ const SAMPLE_MEDIA: Array<Omit<MediaClip, 'id'>> = [
     transition: { type: 'none', duration: 0.5 },
     width: 1080,
     height: 1920,
-    thumbnailUri: 'https://picsum.photos/seed/clipvero2/360/640',
+    thumbnailUri: 'asset:/sample_videos/sample2.mp4',
   },
   {
     name: 'Action Shorts.mp4',
-    uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+    uri: 'asset:/sample_videos/sample3.mp4',
     type: 'video',
     duration: 10.0,
     originalDuration: 10.0,
@@ -115,7 +115,7 @@ const SAMPLE_MEDIA: Array<Omit<MediaClip, 'id'>> = [
     transition: { type: 'none', duration: 0.5 },
     width: 1080,
     height: 1920,
-    thumbnailUri: 'https://picsum.photos/seed/clipvero3/360/640',
+    thumbnailUri: 'asset:/sample_videos/sample3.mp4',
   },
 ];
 

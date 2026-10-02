@@ -218,7 +218,9 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
             ) : (
               <View style={styles.placeholderMedia}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={[styles.placeholderText, { marginTop: 8 }]}>Loading Preview...</Text>
+                <Text style={[styles.placeholderText, { marginTop: 8 }]}>
+                  Loading Preview...
+                </Text>
               </View>
             )}
 

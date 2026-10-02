@@ -17,6 +17,7 @@ import android.os.Build
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.provider.OpenableColumns
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -255,7 +256,85 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         }
     }
 
+    private fun extractAssetSampleIfMissing(sampleName: String = "sample1.mp4"): File {
+        val samplesDir = File(reactContext.filesDir, "sample_videos")
+        if (!samplesDir.exists()) samplesDir.mkdirs()
+        val destFile = File(samplesDir, sampleName)
+        if (!destFile.exists() || destFile.length() == 0L) {
+            try {
+                reactContext.assets.open("sample_videos/$sampleName").use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("ClipveroMediaEngine", "Could not extract sample $sampleName: ${e.message}")
+            }
+        }
+        return destFile
+    }
+
     private fun ensureLocalUri(uriStr: String): Uri {
+        // 1. Android Asset scheme (asset:/...)
+        if (uriStr.startsWith("asset:/")) {
+            val assetPath = uriStr.removePrefix("asset:/").removePrefix("/")
+            val safeName = File(assetPath).name
+            val assetDir = File(reactContext.filesDir, "asset_cache")
+            if (!assetDir.exists()) assetDir.mkdirs()
+            val targetFile = File(assetDir, "${Math.abs(assetPath.hashCode())}_$safeName")
+            if (!targetFile.exists() || targetFile.length() == 0L) {
+                try {
+                    reactContext.assets.open(assetPath).use { input ->
+                        FileOutputStream(targetFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("ClipveroMediaEngine", "Could not extract asset $assetPath: ${e.message}")
+                }
+            }
+            if (targetFile.exists() && targetFile.length() > 0) {
+                return Uri.fromFile(targetFile)
+            }
+            val fallback = extractAssetSampleIfMissing("sample1.mp4")
+            return Uri.fromFile(fallback)
+        }
+
+        // 2. Android Content scheme (content://...)
+        if (uriStr.startsWith("content://")) {
+            try {
+                val contentUri = Uri.parse(uriStr)
+                val hash = Math.abs(uriStr.hashCode()).toString()
+                val contentCacheDir = File(reactContext.cacheDir, "clipvero_content_cache")
+                if (!contentCacheDir.exists()) contentCacheDir.mkdirs()
+
+                val mime = try { reactContext.contentResolver.getType(contentUri) } catch (_: Exception) { null }
+                val ext = when {
+                    mime?.startsWith("image/png") == true -> ".png"
+                    mime?.startsWith("image/") == true -> ".jpg"
+                    mime?.startsWith("video/3gpp") == true -> ".3gp"
+                    mime?.startsWith("video/webm") == true -> ".webm"
+                    else -> ".mp4"
+                }
+                val cachedFile = File(contentCacheDir, "content_${hash}$ext")
+                if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                    reactContext.contentResolver.openInputStream(contentUri)?.use { input ->
+                        FileOutputStream(cachedFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                if (cachedFile.exists() && cachedFile.length() > 0) {
+                    return Uri.fromFile(cachedFile)
+                }
+            } catch (e: Exception) {
+                Log.w("ClipveroMediaEngine", "Could not cache content URI: ${e.message}")
+            }
+            val fallback = extractAssetSampleIfMissing("sample1.mp4")
+            return Uri.fromFile(fallback)
+        }
+
+        // 3. Remote HTTP / HTTPS URLs
         if (uriStr.startsWith("http://") || uriStr.startsWith("https://")) {
             try {
                 val hash = Math.abs(uriStr.hashCode()).toString()
@@ -278,14 +357,34 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     return Uri.fromFile(cacheFile)
                 }
             } catch (_: Exception) {
-                // If remote download fails or is 403, fallback to local bundled sample video
-                val sampleFile = File(reactContext.filesDir, "sample_videos/sample1.mp4")
-                if (sampleFile.exists()) {
-                    return Uri.fromFile(sampleFile)
-                }
             }
+            val sampleFile = extractAssetSampleIfMissing("sample1.mp4")
+            return Uri.fromFile(sampleFile)
         }
-        return parseUri(uriStr)
+
+        // 4. File URIs (file://...)
+        if (uriStr.startsWith("file://")) {
+            val path = uriStr.removePrefix("file://")
+            val file = File(path)
+            if (file.exists() && file.length() > 0) {
+                return Uri.fromFile(file)
+            }
+            if (file.name.startsWith("sample")) {
+                val sampleFile = extractAssetSampleIfMissing(file.name)
+                if (sampleFile.exists()) return Uri.fromFile(sampleFile)
+            }
+            val fallback = extractAssetSampleIfMissing("sample1.mp4")
+            return Uri.fromFile(fallback)
+        }
+
+        // 5. Bare local path
+        val file = File(uriStr)
+        if (file.exists() && file.length() > 0) {
+            return Uri.fromFile(file)
+        }
+
+        val sampleFallback = extractAssetSampleIfMissing("sample1.mp4")
+        return Uri.fromFile(sampleFallback)
     }
 
     private fun setRetrieverDataSource(retriever: MediaMetadataRetriever, uriStr: String) {
@@ -750,15 +849,28 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     val transitionObj = clipObj.optJSONObject("transition")
                     val transitionType = transitionObj?.optString("type", "none") ?: "none"
 
+                    val pathLower = (uri.path ?: uriStr).lowercase()
+                    val isImage = pathLower.endsWith(".jpg") ||
+                        pathLower.endsWith(".jpeg") ||
+                        pathLower.endsWith(".png") ||
+                        pathLower.endsWith(".webp") ||
+                        pathLower.endsWith(".bmp") ||
+                        clipObj.optString("type") == "image"
+
                     val mediaItemBuilder = MediaItem.Builder().setUri(uri)
 
-                    val clippingConfig = MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs((trimStartSec * 1000).toLong())
+                    if (!isImage) {
+                        val clippingConfig = MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs((trimStartSec * 1000).toLong())
 
-                    if (trimEndSec > 0) {
-                        clippingConfig.setEndPositionMs((trimEndSec * 1000).toLong())
+                        if (trimEndSec > 0 && trimEndSec > trimStartSec) {
+                            clippingConfig.setEndPositionMs((trimEndSec * 1000).toLong())
+                        }
+                        mediaItemBuilder.setClippingConfiguration(clippingConfig.build())
+                    } else {
+                        val durationSec = if (trimEndSec > trimStartSec) (trimEndSec - trimStartSec) else clipObj.optDouble("duration", 3.0)
+                        mediaItemBuilder.setImageDurationMs((durationSec * 1000).toLong())
                     }
-                    mediaItemBuilder.setClippingConfiguration(clippingConfig.build())
 
                     val effectsList = ArrayList<androidx.media3.common.Effect>()
 
@@ -776,23 +888,34 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
 
                     val effects = Effects(emptyList(), effectsList)
 
-                    val editedItem = EditedMediaItem.Builder(mediaItemBuilder.build())
-                        .setEffects(effects)
-                        .setRemoveAudio(clipObj.optBoolean("isMuted", false))
-                        .build()
+                    val removeAudio = isImage || clipObj.optBoolean("isMuted", false) || clipObj.optDouble("volume", 1.0) == 0.0
 
-                    editedMediaItems.add(editedItem)
+                    val editedItemBuilder = EditedMediaItem.Builder(mediaItemBuilder.build())
+                        .setEffects(effects)
+                        .setRemoveAudio(removeAudio)
+
+                    if (isImage) {
+                        editedItemBuilder.setFrameRate(30)
+                    }
+
+                    editedMediaItems.add(editedItemBuilder.build())
                 }
 
                 val sequence = EditedMediaItemSequence(editedMediaItems)
                 val composition = Composition.Builder(listOf(sequence)).build()
 
+                val hasAnyAudio = editedMediaItems.any { !it.removeAudio }
+
                 mainHandler.post {
                     try {
-                        val transformationRequest = TransformationRequest.Builder()
+                        val requestBuilder = TransformationRequest.Builder()
                             .setVideoMimeType(MimeTypes.VIDEO_H264)
-                            .setAudioMimeType(MimeTypes.AUDIO_AAC)
-                            .build()
+
+                        if (hasAnyAudio) {
+                            requestBuilder.setAudioMimeType(MimeTypes.AUDIO_AAC)
+                        }
+
+                        val transformationRequest = requestBuilder.build()
 
                         val transformer = Transformer.Builder(reactContext)
                             .setTransformationRequest(transformationRequest)
@@ -815,7 +938,9 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                                     stopProgressPolling()
                                     activeTransformer = null
                                     if (outputFile.exists()) outputFile.delete()
-                                    promise.reject("EXPORT_ERROR", "Media3 Export error: ${exportException.message}", exportException)
+                                    val errorDetail = exportException.cause?.message ?: exportException.message
+                                    val codeName = exportException.errorCodeName
+                                    promise.reject("EXPORT_ERROR", "Media3 Export error ($codeName): $errorDetail", exportException)
                                 }
                             })
                             .build()
