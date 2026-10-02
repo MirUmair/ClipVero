@@ -112,6 +112,11 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
     s => currentTime >= s.startTime && currentTime <= s.endTime,
   );
 
+  // Active PIP overlay layers at currentTime
+  const visiblePipLayers = (project?.pipLayers || []).filter(
+    p => currentTime >= p.startTime && currentTime <= p.endTime,
+  );
+
   return (
     <View style={[styles.wrapper, style]}>
       <Pressable
@@ -176,6 +181,13 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
                 ]}
                 pointerEvents="none"
               />
+            )}
+
+            {/* Reverse Playback Indicator Badge */}
+            {currentClip?.isReversed && (
+              <View style={styles.reverseBadge} pointerEvents="none">
+                <Text style={styles.reverseBadgeText}>◀ REVERSED</Text>
+              </View>
             )}
           </View>
         ) : (
@@ -254,6 +266,42 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
             ) : null}
           </View>
         ))}
+
+        {/* Picture-in-Picture (PIP) Overlays */}
+        {visiblePipLayers.map(pip => {
+          const pipW = previewBounds.width * (pip.scale || 0.35);
+          const pipH = previewBounds.height * (pip.scale || 0.35);
+          return (
+            <View
+              key={pip.id}
+              style={[
+                styles.pipOverlayWrapper,
+                {
+                  left: `${pip.x * 100}%`,
+                  top: `${pip.y * 100}%`,
+                  width: pipW,
+                  height: pipH,
+                  opacity: pip.opacity ?? 1.0,
+                  transform: [
+                    { translateX: -pipW / 2 },
+                    { translateY: -pipH / 2 },
+                    { rotate: `${pip.rotation || 0}deg` },
+                  ],
+                },
+              ]}
+              pointerEvents="none"
+            >
+              <Image
+                source={{ uri: pip.uri }}
+                style={styles.pipImage}
+                resizeMode="cover"
+              />
+              <View style={styles.pipTag}>
+                <Text style={styles.pipTagText}>PIP</Text>
+              </View>
+            </View>
+          );
+        })}
       </Pressable>
     </View>
   );
@@ -336,5 +384,53 @@ const styles = StyleSheet.create({
   stickerImage: {
     width: 44,
     height: 44,
+  },
+  reverseBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  reverseBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  pipOverlayWrapper: {
+    position: 'absolute',
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: colors.borderLight,
+    backgroundColor: '#000000',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
+  },
+  pipImage: {
+    width: '100%',
+    height: '100%',
+  },
+  pipTag: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 2,
+  },
+  pipTagText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

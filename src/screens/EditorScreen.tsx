@@ -17,6 +17,8 @@ import {
   TextLayer,
   AudioTrack,
   ClipTransition,
+  PipLayer,
+  SpeedCurve,
 } from '../types/project';
 import { useAppNavigation } from '../navigation/navigationContext';
 import { VideoPreviewPlayer } from '../editor/preview/VideoPreviewPlayer';
@@ -38,6 +40,7 @@ import { AdjustmentModal } from '../editor/adjustments/AdjustmentModal';
 import { TextEditorModal } from '../editor/text/TextEditorModal';
 import { AudioModal } from '../editor/audio/AudioModal';
 import { StickersModal } from '../editor/overlays/StickersModal';
+import { PipModal } from '../editor/pip/PipModal';
 import {
   calculateEffectiveClipDuration,
   calculateProjectTotalDuration,
@@ -96,6 +99,8 @@ export const EditorScreen: React.FC = () => {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
   const [stickersModalVisible, setStickersModalVisible] = useState(false);
+  const [pipModalVisible, setPipModalVisible] = useState(false);
+  const [selectedPipId, setSelectedPipId] = useState<string | null>(null);
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [audioModalVisible, setAudioModalVisible] = useState(false);
   const [audioModalTab, setAudioModalTab] = useState<'music' | 'voiceover' | 'sfx'>('music');
@@ -538,11 +543,57 @@ export const EditorScreen: React.FC = () => {
     );
     const newClips = project.clips.map(c =>
       c.id === selectedClip.id
-        ? { ...c, speed, duration: effectiveDuration }
+        ? {
+            ...c,
+            speed,
+            speedCurve: { preset: 'none', points: [] },
+            duration: effectiveDuration,
+          }
         : c,
     );
     updateProject({ ...project, clips: newClips });
     setSpeedModalVisible(false);
+  };
+
+  // 7b. Speed Curve clip
+  const handleSelectSpeedCurve = (curve: SpeedCurve) => {
+    if (!selectedClip) return;
+    const effectiveDuration = calculateEffectiveClipDuration(
+      selectedClip.originalDuration,
+      selectedClip.trimStart,
+      selectedClip.trimEnd,
+      selectedClip.speed,
+      curve,
+    );
+    const newClips = project.clips.map(c =>
+      c.id === selectedClip.id
+        ? {
+            ...c,
+            speedCurve: curve,
+            duration: effectiveDuration,
+          }
+        : c,
+    );
+    updateProject({ ...project, clips: newClips });
+    setSpeedModalVisible(false);
+    Alert.alert('Speed Curve', `Applied "${curve.preset}" speed curve to clip.`);
+  };
+
+  // 7c. Reverse clip
+  const handleToggleReverse = () => {
+    if (!selectedClip) return;
+    HapticsService.medium();
+    const nextReversed = !selectedClip.isReversed;
+    const newClips = project.clips.map(c =>
+      c.id === selectedClip.id ? { ...c, isReversed: nextReversed } : c,
+    );
+    updateProject({ ...project, clips: newClips });
+    Alert.alert(
+      nextReversed ? 'Reverse Applied' : 'Reverse Removed',
+      nextReversed
+        ? 'Clip will now play backwards from end to start.'
+        : 'Restored standard forward playback.',
+    );
   };
 
   // 8. Volume change
@@ -608,6 +659,9 @@ export const EditorScreen: React.FC = () => {
         break;
       case 'freeze':
         handleFreezeFrame();
+        break;
+      case 'reverse':
+        handleToggleReverse();
         break;
       case 'transition':
         handleOpenTransition();
@@ -763,6 +817,24 @@ export const EditorScreen: React.FC = () => {
     });
   };
 
+  const handleAddPip = (newPip: PipLayer) => {
+    const existing = project.pipLayers || [];
+    updateProject({ ...project, pipLayers: [...existing, newPip] });
+  };
+
+  const handleUpdatePip = (updatedPip: PipLayer) => {
+    const existing = project.pipLayers || [];
+    const updated = existing.map(p => (p.id === updatedPip.id ? updatedPip : p));
+    updateProject({ ...project, pipLayers: updated }, false);
+  };
+
+  const handleDeletePip = (id: string) => {
+    const existing = project.pipLayers || [];
+    const updated = existing.filter(p => p.id !== id);
+    setSelectedPipId(null);
+    updateProject({ ...project, pipLayers: updated });
+  };
+
   const handleExport = () => {
     HapticsService.medium();
     navigation.navigate('Export', { project });
@@ -856,6 +928,7 @@ export const EditorScreen: React.FC = () => {
         onAdjustPress={() => setAdjustModalVisible(true)}
         onRatioPress={() => setRatioModalVisible(true)}
         onStickersPress={() => setStickersModalVisible(true)}
+        onPipPress={() => setPipModalVisible(true)}
         onTransitionPress={() => handleOpenTransition()}
         hasSelectedClip={!!selectedClip}
       />
@@ -878,7 +951,9 @@ export const EditorScreen: React.FC = () => {
         visible={speedModalVisible}
         onClose={() => setSpeedModalVisible(false)}
         currentSpeed={selectedClip?.speed || 1.0}
+        currentCurve={selectedClip?.speedCurve}
         onSelectSpeed={handleSelectSpeed}
+        onSelectCurve={handleSelectSpeedCurve}
         originalDuration={selectedClip?.originalDuration || 10}
         trimDuration={
           (selectedClip?.trimEnd || 10) - (selectedClip?.trimStart || 0)
@@ -1076,6 +1151,19 @@ export const EditorScreen: React.FC = () => {
         visible={stickersModalVisible}
         onClose={() => setStickersModalVisible(false)}
         onSelectEmoji={handleAddEmojiSticker}
+      />
+
+      <PipModal
+        visible={pipModalVisible}
+        onClose={() => setPipModalVisible(false)}
+        pipLayers={project.pipLayers || []}
+        selectedPipId={selectedPipId}
+        currentTime={currentTime}
+        totalDuration={totalDuration}
+        onSelectPip={setSelectedPipId}
+        onAddPip={handleAddPip}
+        onUpdatePip={handleUpdatePip}
+        onDeletePip={handleDeletePip}
       />
 
       {/* Rename Project Modal */}

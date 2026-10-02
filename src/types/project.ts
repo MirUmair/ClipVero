@@ -54,6 +54,23 @@ export interface CropRect {
   ratio: AspectRatioType;
 }
 
+export type SpeedCurvePreset =
+  | 'none'
+  | 'montage'
+  | 'hero'
+  | 'bullet'
+  | 'jump';
+
+export interface SpeedPoint {
+  time: number; // 0..1 normalized time
+  speed: number; // 0.2..4.0 playback speed
+}
+
+export interface SpeedCurve {
+  preset: SpeedCurvePreset;
+  points: SpeedPoint[];
+}
+
 export interface MediaClip {
   id: string;
   uri: string;
@@ -64,6 +81,8 @@ export interface MediaClip {
   trimStart: number; // Seconds from start
   trimEnd: number; // Seconds from start (e.g., originalDuration)
   speed: number; // 0.25 to 4.0, default 1.0
+  speedCurve?: SpeedCurve;
+  isReversed?: boolean;
   volume: number; // 0 to 1, default 1
   isMuted: boolean;
   rotation: number; // 0, 90, 180, 270
@@ -146,6 +165,22 @@ export interface ExportSettings {
   format: 'mp4';
 }
 
+export interface PipLayer {
+  id: string;
+  uri: string;
+  name: string;
+  type: 'video' | 'image';
+  startTime: number; // in project timeline seconds
+  endTime: number; // in project timeline seconds
+  x: number; // 0..1 relative center position (default 0.7)
+  y: number; // 0..1 relative center position (default 0.7)
+  scale: number; // 0.15..0.9 (default 0.35)
+  rotation: number; // in degrees
+  opacity: number; // 0..1
+  volume: number; // 0..1
+  isMuted: boolean;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -156,6 +191,7 @@ export interface Project {
   clips: MediaClip[];
   textLayers: TextLayer[];
   stickerLayers: StickerLayer[];
+  pipLayers?: PipLayer[];
   audioTracks: AudioTrack[];
   exportSettings: ExportSettings;
   thumbnailUri?: string;

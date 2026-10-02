@@ -1,4 +1,15 @@
-import { MediaClip } from '../types/project';
+import { MediaClip, SpeedCurve } from '../types/project';
+
+/**
+ * Calculates average speed from a speed curve
+ */
+export function calculateCurveAverageSpeed(curve?: SpeedCurve): number {
+  if (!curve || !curve.points || curve.points.length === 0 || curve.preset === 'none') {
+    return 1.0;
+  }
+  const sum = curve.points.reduce((acc, p) => acc + p.speed, 0);
+  return Number((sum / curve.points.length).toFixed(2));
+}
 
 /**
  * Format seconds into mm:ss or hh:mm:ss
@@ -49,6 +60,7 @@ export function calculateEffectiveClipDuration(
   trimStart: number,
   trimEnd: number,
   speed: number = 1.0,
+  speedCurve?: SpeedCurve,
 ): number {
   const safeStart = Math.max(0, trimStart);
   const safeEnd = Math.min(
@@ -56,8 +68,11 @@ export function calculateEffectiveClipDuration(
     Math.max(safeStart + 0.1, trimEnd),
   );
   const rawDuration = safeEnd - safeStart;
-  const safeSpeed = Math.max(0.1, speed);
-  return Number((rawDuration / safeSpeed).toFixed(3));
+  const effectiveSpeed =
+    speedCurve && speedCurve.preset !== 'none'
+      ? calculateCurveAverageSpeed(speedCurve)
+      : Math.max(0.1, speed);
+  return Number((rawDuration / effectiveSpeed).toFixed(3));
 }
 
 /**
@@ -75,7 +90,7 @@ export function calculateProjectTotalDuration(clips: MediaClip[]): number {
 
 /**
  * Given a project timeline time (in seconds), finds which clip is playing,
- * its index, and the clip's local timeline time (in raw media time accounting for speed and trim).
+ * its index, and the clip's local timeline time (in raw media time accounting for speed, trim, and reverse).
  */
 export function findClipAtTimelineTime(
   clips: MediaClip[],
@@ -85,7 +100,7 @@ export function findClipAtTimelineTime(
   clipIndex: number;
   clipStartTime: number;
   clipEndTime: number;
-  localTime: number; // raw media timestamp (trimStart + elapsed * speed)
+  localTime: number; // raw media timestamp
 } | null {
   if (!clips || clips.length === 0) {
     return null;
@@ -105,7 +120,14 @@ export function findClipAtTimelineTime(
       (clampedTime < clipEndTime || i === clips.length - 1)
     ) {
       const elapsedInClip = clampedTime - accumulatedTime;
-      const rawMediaTime = clip.trimStart + elapsedInClip * (clip.speed || 1.0);
+      const effectiveSpeed =
+        clip.speedCurve && clip.speedCurve.preset !== 'none'
+          ? calculateCurveAverageSpeed(clip.speedCurve)
+          : clip.speed || 1.0;
+
+      const rawMediaTime = clip.isReversed
+        ? clip.trimEnd - elapsedInClip * effectiveSpeed
+        : clip.trimStart + elapsedInClip * effectiveSpeed;
 
       return {
         clip,

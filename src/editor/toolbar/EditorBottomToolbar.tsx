@@ -9,6 +9,7 @@ import { HapticsService } from '../../services/hapticsService';
 export type MainCategory =
   | 'edit'
   | 'audio'
+  | 'pip'
   | 'text'
   | 'filters'
   | 'adjust'
@@ -25,6 +26,7 @@ export type EditSubAction =
   | 'rotate'
   | 'flip'
   | 'freeze'
+  | 'reverse'
   | 'duplicate'
   | 'delete'
   | 'volume';
@@ -58,6 +60,7 @@ interface EditorBottomToolbarProps {
   onAdjustPress: () => void;
   onRatioPress: () => void;
   onStickersPress: () => void;
+  onPipPress?: () => void;
   onTransitionPress?: () => void;
   hasSelectedClip: boolean;
 }
@@ -69,6 +72,7 @@ const MAIN_CATEGORIES: Array<{
 }> = [
   { id: 'edit', label: 'Edit', icon: 'scissors' },
   { id: 'audio', label: 'Audio', icon: 'music' },
+  { id: 'pip', label: 'PIP', icon: 'pip' },
   { id: 'text', label: 'Text', icon: 'text' },
   { id: 'filters', label: 'Filters', icon: 'filter' },
   { id: 'adjust', label: 'Adjust', icon: 'adjust' },
@@ -88,6 +92,7 @@ const EDIT_ACTIONS: Array<{
   { id: 'volume', label: 'Volume', icon: 'volume' },
   { id: 'crop', label: 'Crop', icon: 'crop' },
   { id: 'freeze', label: 'Freeze', icon: 'pause' },
+  { id: 'reverse', label: 'Reverse', icon: 'reverse' },
   { id: 'rotate', label: 'Rotate', icon: 'rotate' },
   { id: 'flip', label: 'Flip', icon: 'flip' },
   { id: 'duplicate', label: 'Duplicate', icon: 'copy' },
@@ -132,10 +137,15 @@ export const EditorBottomToolbar: React.FC<EditorBottomToolbarProps> = ({
   onAdjustPress,
   onRatioPress,
   onStickersPress,
+  onPipPress,
   hasSelectedClip: _hasSelectedClip,
 }) => {
   const handleCategoryPress = (category: MainCategory) => {
     HapticsService.light();
+    if (category === 'pip') {
+      if (onPipPress) onPipPress();
+      return;
+    }
     if (category === 'filters') {
       onFiltersPress();
       return;

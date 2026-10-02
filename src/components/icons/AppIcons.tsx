@@ -41,6 +41,9 @@ export type IconName =
   | 'fullscreen'
   | 'folder'
   | 'mic'
+  | 'reverse'
+  | 'pip'
+  | 'curve'
   | 'chevronRight';
 
 interface AppIconProps {
@@ -1345,6 +1348,127 @@ export const AppIcon: React.FC<AppIconProps> = ({
                 height: Math.max(1.5, size * 0.08),
                 borderRadius: 1,
                 backgroundColor: color,
+              }}
+            />
+          </View>
+        );
+
+      case 'reverse':
+        return (
+          <View
+            style={{
+              width: size,
+              height: size,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                width: size * 0.65,
+                height: size * 0.65,
+                borderRadius: size * 0.325,
+                borderWidth: Math.max(1.8, size * 0.09),
+                borderRightColor: 'transparent',
+                borderColor: color,
+                transform: [{ rotate: '-45deg' }],
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                top: size * 0.12,
+                left: size * 0.16,
+                width: 0,
+                height: 0,
+                borderTopWidth: size * 0.16,
+                borderBottomWidth: size * 0.16,
+                borderRightWidth: size * 0.24,
+                borderTopColor: 'transparent',
+                borderBottomColor: 'transparent',
+                borderRightColor: color,
+              }}
+            />
+          </View>
+        );
+
+      case 'pip':
+        return (
+          <View
+            style={{
+              width: size,
+              height: size,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {/* Outer window */}
+            <View
+              style={{
+                width: size * 0.8,
+                height: size * 0.6,
+                borderWidth: Math.max(1.5, size * 0.08),
+                borderColor: color,
+                borderRadius: 2,
+              }}
+            />
+            {/* Inner PIP window */}
+            <View
+              style={{
+                position: 'absolute',
+                bottom: size * 0.22,
+                right: size * 0.14,
+                width: size * 0.38,
+                height: size * 0.28,
+                backgroundColor: color,
+                borderRadius: 1.5,
+              }}
+            />
+          </View>
+        );
+
+      case 'curve':
+        return (
+          <View
+            style={{
+              width: size,
+              height: size,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              gap: size * 0.06,
+            }}
+          >
+            <View
+              style={{
+                width: size * 0.12,
+                height: size * 0.35,
+                backgroundColor: color,
+                borderRadius: size * 0.06,
+              }}
+            />
+            <View
+              style={{
+                width: size * 0.12,
+                height: size * 0.7,
+                backgroundColor: color,
+                borderRadius: size * 0.06,
+              }}
+            />
+            <View
+              style={{
+                width: size * 0.12,
+                height: size * 0.25,
+                backgroundColor: color,
+                borderRadius: size * 0.06,
+              }}
+            />
+            <View
+              style={{
+                width: size * 0.12,
+                height: size * 0.55,
+                backgroundColor: color,
+                borderRadius: size * 0.06,
               }}
             />
           </View>
