@@ -4,11 +4,16 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.media.PlaybackParams
+import android.os.Build
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -38,7 +43,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.math.*
 import java.util.concurrent.Executors
 
 class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContext) :
@@ -51,8 +60,19 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     private var isCancelled = false
     private var progressRunnable: Runnable? = null
 
+    private var clipAudioPlayer: MediaPlayer? = null
+    private var trackAudioPlayer: MediaPlayer? = null
+    private var currentPlayingClipUri: String? = null
+    private var currentPlayingTrackUri: String? = null
+
+    private var voiceoverRecorder: MediaRecorder? = null
+    private var voiceoverOutputFile: File? = null
+    private var voiceoverStartTimeMs: Long = 0L
+
     private var pendingPickerPromise: Promise? = null
     private val PICK_MEDIA_REQUEST_CODE = 41234
+    private var pendingAudioPickerPromise: Promise? = null
+    private val PICK_AUDIO_REQUEST_CODE = 41235
 
     private val activityEventListener: ActivityEventListener = object : BaseActivityEventListener() {
         override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
@@ -162,6 +182,52 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                         promise.reject("PICK_ERROR", "Failed to process picked media: ${e.message}", e)
                     }
                 }
+            } else if (requestCode == PICK_AUDIO_REQUEST_CODE) {
+                val promise = pendingAudioPickerPromise
+                pendingAudioPickerPromise = null
+                if (promise == null) return
+
+                if (resultCode != Activity.RESULT_OK || data == null || data.data == null) {
+                    promise.resolve(null)
+                    return
+                }
+
+                val uri = data.data!!
+                try {
+                    val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    reactContext.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                } catch (_: Exception) {}
+
+                executor.execute {
+                    val retriever = MediaMetadataRetriever()
+                    var durationSec = 15.0
+                    var name = "Custom Audio"
+                    try {
+                        retriever.setDataSource(reactContext, uri)
+                        val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        if (durStr != null) {
+                            durationSec = (durStr.toLongOrNull() ?: 15000L) / 1000.0
+                        }
+                        val titleStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                        if (!titleStr.isNullOrEmpty()) {
+                            name = titleStr
+                        } else {
+                            val path = uri.path
+                            if (path != null) {
+                                name = File(path).name
+                            }
+                        }
+                    } catch (_: Exception) {
+                    } finally {
+                        try { retriever.release() } catch (_: Exception) {}
+                    }
+
+                    val map = Arguments.createMap()
+                    map.putString("uri", uri.toString())
+                    map.putString("name", name)
+                    map.putDouble("duration", durationSec)
+                    promise.resolve(map)
+                }
             }
         }
     }
@@ -182,10 +248,150 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     }
 
     private fun parseUri(uriStr: String): Uri {
-        return if (uriStr.startsWith("content://") || uriStr.startsWith("file://")) {
+        return if (uriStr.startsWith("content://") || uriStr.startsWith("file://") || uriStr.startsWith("http://") || uriStr.startsWith("https://")) {
             Uri.parse(uriStr)
         } else {
             Uri.fromFile(File(uriStr))
+        }
+    }
+
+    private fun ensureLocalUri(uriStr: String): Uri {
+        if (uriStr.startsWith("http://") || uriStr.startsWith("https://")) {
+            try {
+                val hash = Math.abs(uriStr.hashCode()).toString()
+                val cacheDir = File(reactContext.cacheDir, "clipvero_downloaded")
+                if (!cacheDir.exists()) cacheDir.mkdirs()
+                val cacheFile = File(cacheDir, "cached_$hash.mp4")
+                if (!cacheFile.exists() || cacheFile.length() == 0L) {
+                    val url = URL(uriStr)
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) Clipvero/1.0")
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.inputStream.use { input ->
+                        FileOutputStream(cacheFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                if (cacheFile.exists() && cacheFile.length() > 0) {
+                    return Uri.fromFile(cacheFile)
+                }
+            } catch (_: Exception) {
+                // If remote download fails or is 403, fallback to local bundled sample video
+                val sampleFile = File(reactContext.filesDir, "sample_videos/sample1.mp4")
+                if (sampleFile.exists()) {
+                    return Uri.fromFile(sampleFile)
+                }
+            }
+        }
+        return parseUri(uriStr)
+    }
+
+    private fun setRetrieverDataSource(retriever: MediaMetadataRetriever, uriStr: String) {
+        val resolvedUri = ensureLocalUri(uriStr)
+        if (resolvedUri.scheme == "content") {
+            reactContext.contentResolver.openFileDescriptor(resolvedUri, "r")?.use { pfd ->
+                retriever.setDataSource(pfd.fileDescriptor)
+            } ?: run {
+                retriever.setDataSource(reactContext, resolvedUri)
+            }
+        } else if (resolvedUri.scheme == "file" || resolvedUri.scheme == null) {
+            retriever.setDataSource(resolvedUri.path ?: uriStr)
+        } else {
+            retriever.setDataSource(uriStr, HashMap<String, String>())
+        }
+    }
+
+    @ReactMethod
+    fun getStarterSamples(promise: Promise) {
+        executor.execute {
+            try {
+                val samplesDir = File(reactContext.filesDir, "sample_videos")
+                if (!samplesDir.exists()) samplesDir.mkdirs()
+
+                val assetManager = reactContext.assets
+                val sampleNames = listOf("sample1.mp4", "sample2.mp4", "sample3.mp4")
+                val sampleTitles = listOf("Sunset Reel.mp4", "Urban Street.mp4", "Action Shorts.mp4")
+                val results = Arguments.createArray()
+
+                for (idx in sampleNames.indices) {
+                    val assetName = sampleNames[idx]
+                    val destFile = File(samplesDir, assetName)
+
+                    if (!destFile.exists() || destFile.length() == 0L) {
+                        try {
+                            assetManager.open("sample_videos/$assetName").use { input ->
+                                FileOutputStream(destFile).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        } catch (_: Exception) {
+                        }
+                    }
+
+                    if (destFile.exists() && destFile.length() > 0) {
+                        val retriever = MediaMetadataRetriever()
+                        var durationSec = 10.0
+                        var width = 1080
+                        var height = 1920
+                        var thumbUriStr: String? = null
+
+                        try {
+                            retriever.setDataSource(destFile.absolutePath)
+                            val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            if (durStr != null) {
+                                val durMs = durStr.toLongOrNull() ?: 10000L
+                                durationSec = durMs / 1000.0
+                            }
+                            val wStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                            val hStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                            if (wStr != null) width = wStr.toIntOrNull() ?: 1080
+                            if (hStr != null) height = hStr.toIntOrNull() ?: 1920
+
+                            val frame = retriever.getFrameAtTime(500000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            if (frame != null) {
+                                val thumbDir = File(reactContext.cacheDir, "sample_thumbs")
+                                if (!thumbDir.exists()) thumbDir.mkdirs()
+                                val thumbFile = File(thumbDir, "sample_thumb_${idx}.jpg")
+                                FileOutputStream(thumbFile).use { out ->
+                                    frame.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                                }
+                                thumbUriStr = "file://${thumbFile.absolutePath}"
+                            }
+                        } catch (_: Exception) {
+                        } finally {
+                            try { retriever.release() } catch (_: Exception) {}
+                        }
+
+                        val map = Arguments.createMap()
+                        map.putString("name", sampleTitles[idx])
+                        map.putString("uri", "file://${destFile.absolutePath}")
+                        map.putString("type", "video")
+                        map.putDouble("duration", durationSec)
+                        map.putDouble("originalDuration", durationSec)
+                        map.putDouble("trimStart", 0.0)
+                        map.putDouble("trimEnd", durationSec)
+                        map.putDouble("speed", 1.0)
+                        map.putDouble("volume", 1.0)
+                        map.putBoolean("isMuted", false)
+                        map.putInt("rotation", 0)
+                        map.putBoolean("flipHorizontal", false)
+                        map.putBoolean("flipVertical", false)
+                        map.putString("filterId", "none")
+                        map.putInt("width", width)
+                        map.putInt("height", height)
+                        if (thumbUriStr != null) {
+                            map.putString("thumbnailUri", thumbUriStr)
+                        }
+                        results.pushMap(map)
+                    }
+                }
+
+                promise.resolve(results)
+            } catch (e: Exception) {
+                promise.reject("SAMPLES_ERROR", "Failed to load starter samples: ${e.message}", e)
+            }
         }
     }
 
@@ -228,16 +434,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         executor.execute {
             val retriever = MediaMetadataRetriever()
             try {
-                val uri = parseUri(uriStr)
-                if (uriStr.startsWith("content://")) {
-                    reactContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        retriever.setDataSource(pfd.fileDescriptor)
-                    } ?: run {
-                        retriever.setDataSource(reactContext, uri)
-                    }
-                } else {
-                    retriever.setDataSource(uri.path)
-                }
+                setRetrieverDataSource(retriever, uriStr)
 
                 val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
@@ -274,16 +471,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         executor.execute {
             val retriever = MediaMetadataRetriever()
             try {
-                val uri = parseUri(uriStr)
-                if (uriStr.startsWith("content://")) {
-                    reactContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        retriever.setDataSource(pfd.fileDescriptor)
-                    } ?: run {
-                        retriever.setDataSource(reactContext, uri)
-                    }
-                } else {
-                    retriever.setDataSource(uri.path)
-                }
+                setRetrieverDataSource(retriever, uriStr)
 
                 val timeUs = (timeSec * 1000000).toLong()
                 val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
@@ -326,23 +514,47 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         executor.execute {
             val retriever = MediaMetadataRetriever()
             try {
-                val uri = parseUri(uriStr)
-                if (uriStr.startsWith("content://")) {
-                    reactContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        retriever.setDataSource(pfd.fileDescriptor)
-                    } ?: run {
-                        retriever.setDataSource(reactContext, uri)
+                val thumbs = Arguments.createArray()
+                val lower = uriStr.lowercase()
+                val isImage = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp") || lower.endsWith(".bmp")
+
+                if (isImage) {
+                    val resolvedUri = ensureLocalUri(uriStr)
+                    var imageBitmap: Bitmap? = null
+                    if (resolvedUri.scheme == "content") {
+                        reactContext.contentResolver.openInputStream(resolvedUri)?.use { input ->
+                            imageBitmap = BitmapFactory.decodeStream(input)
+                        }
+                    } else if (resolvedUri.scheme == "file" || resolvedUri.scheme == null) {
+                        imageBitmap = BitmapFactory.decodeFile(resolvedUri.path ?: uriStr)
                     }
-                } else {
-                    retriever.setDataSource(uri.path)
+
+                    if (imageBitmap != null) {
+                        val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
+                        if (!cacheDir.exists()) cacheDir.mkdirs()
+                        val thumbFile = File(cacheDir, "tl_${System.currentTimeMillis()}_0.jpg")
+                        val scaled = Bitmap.createScaledBitmap(imageBitmap!!, 120, 120, true)
+                        FileOutputStream(thumbFile).use { out ->
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                        }
+                        if (scaled != imageBitmap) scaled.recycle()
+                        imageBitmap?.recycle()
+                        val thumbUri = "file://${thumbFile.absolutePath}"
+                        for (i in 0 until count) {
+                            thumbs.pushString(thumbUri)
+                        }
+                        promise.resolve(thumbs)
+                        return@execute
+                    }
                 }
+
+                setRetrieverDataSource(retriever, uriStr)
 
                 val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 val durationMs = durStr?.toLongOrNull() ?: 10000L
                 val durationUs = durationMs * 1000L
 
                 val intervalUs = if (count > 1) durationUs / (count - 1) else 0L
-                val thumbs = Arguments.createArray()
 
                 val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
@@ -366,7 +578,11 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
 
                 promise.resolve(thumbs)
             } catch (e: Exception) {
-                promise.reject("TIMELINE_THUMBNAIL_ERROR", "Failed to generate timeline frames: ${e.message}", e)
+                val fallbackThumbs = Arguments.createArray()
+                for (i in 0 until count) {
+                    fallbackThumbs.pushString(uriStr)
+                }
+                promise.resolve(fallbackThumbs)
             } finally {
                 try {
                     retriever.release()
@@ -384,14 +600,16 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 val videoUri = parseUri(videoUriStr)
                 extractor = MediaExtractor()
 
-                if (videoUriStr.startsWith("content://")) {
+                if (videoUriStr.startsWith("http://") || videoUriStr.startsWith("https://")) {
+                    extractor.setDataSource(videoUriStr)
+                } else if (videoUriStr.startsWith("content://")) {
                     reactContext.contentResolver.openFileDescriptor(videoUri, "r")?.use { pfd ->
                         extractor.setDataSource(pfd.fileDescriptor)
                     } ?: run {
                         extractor.setDataSource(reactContext, videoUri, null)
                     }
                 } else {
-                    extractor.setDataSource(videoUri.path!!)
+                    extractor.setDataSource(videoUri.path ?: videoUriStr)
                 }
 
                 var audioTrackIndex = -1
@@ -495,7 +713,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 for (i in 0 until clipsArray.length()) {
                     val clipObj = clipsArray.getJSONObject(i)
                     val uriStr = clipObj.getString("uri")
-                    val uri = parseUri(uriStr)
+                    val uri = ensureLocalUri(uriStr)
 
                     val trimStartSec = clipObj.optDouble("trimStart", 0.0)
                     val trimEndSec = clipObj.optDouble("trimEnd", -1.0)
@@ -666,6 +884,470 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     @ReactMethod
     fun getStorageDirectory(promise: Promise) {
         promise.resolve(reactContext.filesDir.absolutePath)
+    }
+
+    private fun setMediaPlayerSource(player: MediaPlayer, uriStr: String) {
+        val resolvedUri = ensureLocalUri(uriStr)
+        if (resolvedUri.scheme == "content") {
+            try {
+                player.setDataSource(reactContext, resolvedUri)
+            } catch (e: Exception) {
+                reactContext.contentResolver.openFileDescriptor(resolvedUri, "r")?.fileDescriptor?.let { fd ->
+                    player.setDataSource(fd)
+                }
+            }
+        } else if (resolvedUri.scheme == "file" || resolvedUri.scheme == null) {
+            val path = resolvedUri.path ?: uriStr
+            player.setDataSource(path)
+        } else if (resolvedUri.scheme == "asset" || uriStr.startsWith("asset:/")) {
+            val assetPath = uriStr.removePrefix("asset:/").removePrefix("/")
+            val cacheFile = File(reactContext.cacheDir, "asset_${Math.abs(assetPath.hashCode())}.wav")
+            if (!cacheFile.exists() || cacheFile.length() == 0L) {
+                reactContext.assets.open(assetPath).use { input ->
+                    FileOutputStream(cacheFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            player.setDataSource(cacheFile.absolutePath)
+        } else {
+            player.setDataSource(reactContext, resolvedUri)
+        }
+    }
+
+    @ReactMethod
+    fun playPreviewAudio(
+        clipUriStr: String?,
+        clipVolume: Double,
+        clipMuted: Boolean,
+        clipSpeed: Double,
+        trackUriStr: String?,
+        trackVolume: Double,
+        trackMuted: Boolean,
+        clipPositionMs: Int,
+        trackPositionMs: Int,
+        promise: Promise
+    ) {
+        mainHandler.post {
+            try {
+                // 1. Video Clip Audio Player
+                val isImage = clipUriStr?.let {
+                    it.endsWith(".jpg", true) || it.endsWith(".jpeg", true) || it.endsWith(".png", true) || it.endsWith(".webp", true)
+                } ?: false
+
+                if (!clipUriStr.isNullOrEmpty() && !clipMuted && clipVolume > 0 && !isImage) {
+                    val needsNewPlayer = clipAudioPlayer == null || currentPlayingClipUri != clipUriStr
+                    if (needsNewPlayer) {
+                        try {
+                            clipAudioPlayer?.stop()
+                            clipAudioPlayer?.release()
+                        } catch (_: Exception) {}
+
+                        clipAudioPlayer = MediaPlayer().apply {
+                            setMediaPlayerSource(this, clipUriStr)
+                            try { prepare() } catch (_: Exception) {}
+                        }
+                        currentPlayingClipUri = clipUriStr
+                    }
+
+                    clipAudioPlayer?.let { player ->
+                        val vol = clipVolume.toFloat().coerceIn(0f, 1f)
+                        player.setVolume(vol, vol)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && clipSpeed > 0) {
+                            try {
+                                val params = player.playbackParams ?: PlaybackParams()
+                                player.playbackParams = params.setSpeed(clipSpeed.toFloat())
+                            } catch (_: Exception) {
+                                try {
+                                    val params = PlaybackParams()
+                                    params.speed = clipSpeed.toFloat()
+                                    player.playbackParams = params
+                                } catch (_: Exception) {}
+                            }
+                        }
+                        if (clipPositionMs >= 0) {
+                            try { player.seekTo(clipPositionMs) } catch (_: Exception) {}
+                        }
+                        try {
+                            if (!player.isPlaying) player.start()
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    try {
+                        clipAudioPlayer?.let { if (it.isPlaying) it.pause() }
+                    } catch (_: Exception) {}
+                }
+
+                // 2. Background Track Audio Player
+                if (!trackUriStr.isNullOrEmpty() && !trackMuted && trackVolume > 0 && trackPositionMs >= 0) {
+                    val needsNewTrack = trackAudioPlayer == null || currentPlayingTrackUri != trackUriStr
+                    if (needsNewTrack) {
+                        try {
+                            trackAudioPlayer?.stop()
+                            trackAudioPlayer?.release()
+                        } catch (_: Exception) {}
+
+                        trackAudioPlayer = MediaPlayer().apply {
+                            setMediaPlayerSource(this, trackUriStr)
+                            try { prepare() } catch (_: Exception) {}
+                        }
+                        currentPlayingTrackUri = trackUriStr
+                    }
+
+                    trackAudioPlayer?.let { player ->
+                        val vol = trackVolume.toFloat().coerceIn(0f, 1f)
+                        player.setVolume(vol, vol)
+                        if (trackPositionMs >= 0) {
+                            try { player.seekTo(trackPositionMs) } catch (_: Exception) {}
+                        }
+                        try {
+                            if (!player.isPlaying) player.start()
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    try {
+                        trackAudioPlayer?.let { if (it.isPlaying) it.pause() }
+                    } catch (_: Exception) {}
+                }
+
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.resolve(false)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun pausePreviewAudio(promise: Promise) {
+        mainHandler.post {
+            try {
+                clipAudioPlayer?.let { if (it.isPlaying) it.pause() }
+                trackAudioPlayer?.let { if (it.isPlaying) it.pause() }
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.resolve(false)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun seekPreviewAudio(clipPositionMs: Int, trackPositionMs: Int, promise: Promise) {
+        mainHandler.post {
+            try {
+                if (clipPositionMs >= 0) {
+                    try { clipAudioPlayer?.seekTo(clipPositionMs) } catch (_: Exception) {}
+                }
+                if (trackPositionMs >= 0) {
+                    try { trackAudioPlayer?.seekTo(trackPositionMs) } catch (_: Exception) {}
+                }
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.resolve(false)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun setPreviewAudioVolume(
+        clipVolume: Double,
+        clipMuted: Boolean,
+        trackVolume: Double,
+        trackMuted: Boolean,
+        promise: Promise
+    ) {
+        mainHandler.post {
+            try {
+                clipAudioPlayer?.let {
+                    val vol = if (clipMuted) 0f else clipVolume.toFloat().coerceIn(0f, 1f)
+                    it.setVolume(vol, vol)
+                }
+                trackAudioPlayer?.let {
+                    val vol = if (trackMuted) 0f else trackVolume.toFloat().coerceIn(0f, 1f)
+                    it.setVolume(vol, vol)
+                }
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.resolve(false)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun stopPreviewAudio(promise: Promise) {
+        mainHandler.post {
+            try {
+                clipAudioPlayer?.stop()
+                clipAudioPlayer?.release()
+                clipAudioPlayer = null
+                currentPlayingClipUri = null
+
+                trackAudioPlayer?.stop()
+                trackAudioPlayer?.release()
+                trackAudioPlayer = null
+                currentPlayingTrackUri = null
+
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.resolve(false)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun pickAudio(promise: Promise) {
+        val activity = reactContext.currentActivity
+        if (activity == null) {
+            promise.reject("NO_ACTIVITY", "Activity is null")
+            return
+        }
+        pendingAudioPickerPromise = promise
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "audio/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+            putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+        }
+        activity.startActivityForResult(intent, PICK_AUDIO_REQUEST_CODE)
+    }
+
+    @ReactMethod
+    fun getStarterMusic(promise: Promise) {
+        executor.execute {
+            try {
+                val musicDir = File(reactContext.filesDir, "sample_audio")
+                if (!musicDir.exists()) musicDir.mkdirs()
+
+                val destFile = File(musicDir, "sample_audio.wav")
+                if (!destFile.exists() || destFile.length() == 0L) {
+                    try {
+                        reactContext.assets.open("sample_audio.wav").use { input ->
+                            FileOutputStream(destFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                val results = Arguments.createArray()
+                if (destFile.exists() && destFile.length() > 0) {
+                    val map = Arguments.createMap()
+                    map.putString("name", "Upbeat Reel Beat")
+                    map.putString("uri", "file://${destFile.absolutePath}")
+                    map.putDouble("duration", 15.0)
+                    results.pushMap(map)
+                }
+
+                promise.resolve(results)
+            } catch (e: Exception) {
+                promise.reject("MUSIC_ERROR", "Failed to load music: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun writeWavFile(file: File, sampleRate: Int, samples: ShortArray) {
+        val totalAudioLen = samples.size * 2
+        val totalDataLen = totalAudioLen + 36
+        val byteRate = sampleRate * 2
+
+        FileOutputStream(file).use { out ->
+            out.write("RIFF".toByteArray())
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(totalDataLen).array())
+            out.write("WAVE".toByteArray())
+            out.write("fmt ".toByteArray())
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(16).array())
+            out.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(1.toShort()).array())
+            out.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(1.toShort()).array())
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(sampleRate).array())
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(byteRate).array())
+            out.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(2.toShort()).array())
+            out.write(ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(16.toShort()).array())
+            out.write("data".toByteArray())
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(totalAudioLen).array())
+
+            val buffer = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (s in samples) {
+                buffer.putShort(s)
+            }
+            out.write(buffer.array())
+        }
+    }
+
+    @ReactMethod
+    fun startVoiceoverRecording(promise: Promise) {
+        mainHandler.post {
+            try {
+                val voiceoverDir = File(reactContext.filesDir, "voiceovers")
+                if (!voiceoverDir.exists()) voiceoverDir.mkdirs()
+
+                val fileName = "vo_${System.currentTimeMillis()}.m4a"
+                val file = File(voiceoverDir, fileName)
+                voiceoverOutputFile = file
+                voiceoverStartTimeMs = System.currentTimeMillis()
+
+                val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    MediaRecorder(reactContext)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaRecorder()
+                }
+
+                recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+                recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                recorder.setAudioEncodingBitRate(128000)
+                recorder.setAudioSamplingRate(44100)
+                recorder.setOutputFile(file.absolutePath)
+                recorder.prepare()
+                recorder.start()
+                voiceoverRecorder = recorder
+
+                val result = Arguments.createMap().apply {
+                    putBoolean("isRecording", true)
+                    putString("filePath", "file://${file.absolutePath}")
+                }
+                promise.resolve(result)
+            } catch (e: Exception) {
+                promise.reject("VOICEOVER_START_ERROR", "Failed to start voiceover: ${e.message}", e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun stopVoiceoverRecording(promise: Promise) {
+        mainHandler.post {
+            try {
+                voiceoverRecorder?.let {
+                    it.stop()
+                    it.release()
+                }
+                voiceoverRecorder = null
+
+                val file = voiceoverOutputFile
+                if (file != null && file.exists()) {
+                    val durationSec = Math.max(0.5, (System.currentTimeMillis() - voiceoverStartTimeMs) / 1000.0)
+                    val result = Arguments.createMap().apply {
+                        putString("uri", "file://${file.absolutePath}")
+                        putString("name", "Voiceover")
+                        putDouble("duration", durationSec)
+                    }
+                    promise.resolve(result)
+                } else {
+                    promise.reject("VOICEOVER_ERROR", "Voiceover file not found")
+                }
+            } catch (e: Exception) {
+                promise.reject("VOICEOVER_STOP_ERROR", "Failed to stop voiceover: ${e.message}", e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun getSoundEffects(promise: Promise) {
+        executor.execute {
+            try {
+                val sfxDir = File(reactContext.filesDir, "sample_sfx")
+                if (!sfxDir.exists()) sfxDir.mkdirs()
+
+                val sampleRate = 22050
+                val effectsList = listOf(
+                    Triple("swoosh.wav", "Whoosh Transition", 0.45),
+                    Triple("pop.wav", "Pop / Bubble", 0.15),
+                    Triple("ding.wav", "Success Ding", 0.8),
+                    Triple("click.wav", "Camera Click", 0.08),
+                    Triple("bell.wav", "Clear Bell", 1.2),
+                    Triple("riser.wav", "Tension Riser", 0.7)
+                )
+
+                val results = Arguments.createArray()
+
+                for ((filename, title, duration) in effectsList) {
+                    val file = File(sfxDir, filename)
+                    if (!file.exists() || file.length() == 0L) {
+                        val numSamples = (sampleRate * duration).toInt()
+                        val samples = ShortArray(numSamples)
+
+                        when (filename) {
+                            "swoosh.wav" -> {
+                                for (i in 0 until numSamples) {
+                                    val t = i.toDouble() / sampleRate
+                                    val progress = t / duration
+                                    val freq = 200.0 + 800.0 * sin(progress * PI)
+                                    val env = sin(progress * PI)
+                                    val noise = (Math.random() * 2.0 - 1.0) * 0.4
+                                    val tone = sin(2.0 * PI * freq * t) * 0.6
+                                    samples[i] = ((tone + noise) * env * 24000.0).toInt().coerceIn(-32768, 32767).toShort()
+                                }
+                            }
+                            "pop.wav" -> {
+                                for (i in 0 until numSamples) {
+                                    val t = i.toDouble() / sampleRate
+                                    val progress = t / duration
+                                    val freq = 600.0 * (1.0 - progress * 0.7)
+                                    val env = (1.0 - progress) * (1.0 - progress)
+                                    samples[i] = (sin(2.0 * PI * freq * t) * env * 28000.0).toInt().coerceIn(-32768, 32767).toShort()
+                                }
+                            }
+                            "ding.wav" -> {
+                                for (i in 0 until numSamples) {
+                                    val t = i.toDouble() / sampleRate
+                                    val env = exp(-4.0 * (t / duration))
+                                    val tone = sin(2.0 * PI * 1318.5 * t) + 0.3 * sin(2.0 * PI * 2637.0 * t)
+                                    samples[i] = (tone * env * 20000.0).toInt().coerceIn(-32768, 32767).toShort()
+                                }
+                            }
+                            "click.wav" -> {
+                                for (i in 0 until numSamples) {
+                                    val t = i.toDouble() / sampleRate
+                                    val env = exp(-30.0 * (t / duration))
+                                    val noise = (Math.random() * 2.0 - 1.0)
+                                    samples[i] = (noise * env * 28000.0).toInt().coerceIn(-32768, 32767).toShort()
+                                }
+                            }
+                            "bell.wav" -> {
+                                for (i in 0 until numSamples) {
+                                    val t = i.toDouble() / sampleRate
+                                    val env = exp(-2.5 * (t / duration))
+                                    val tone = sin(2.0 * PI * 880.0 * t) + 0.5 * sin(2.0 * PI * 1760.0 * t) + 0.25 * sin(2.0 * PI * 2640.0 * t)
+                                    samples[i] = (tone * env * 18000.0).toInt().coerceIn(-32768, 32767).toShort()
+                                }
+                            }
+                            else -> { // riser.wav
+                                for (i in 0 until numSamples) {
+                                    val t = i.toDouble() / sampleRate
+                                    val progress = t / duration
+                                    val freq = 180.0 + 1200.0 * (progress * progress)
+                                    val env = progress
+                                    samples[i] = (sin(2.0 * PI * freq * t) * env * 24000.0).toInt().coerceIn(-32768, 32767).toShort()
+                                }
+                            }
+                        }
+                        writeWavFile(file, sampleRate, samples)
+                    }
+
+                    if (file.exists() && file.length() > 0) {
+                        val map = Arguments.createMap().apply {
+                            putString("id", "sfx_${filename.substringBefore('.')}")
+                            putString("name", title)
+                            putString("uri", "file://${file.absolutePath}")
+                            putDouble("duration", duration)
+                        }
+                        results.pushMap(map)
+                    }
+                }
+
+                promise.resolve(results)
+            } catch (e: Exception) {
+                promise.reject("SFX_ERROR", "Failed to load SFX: ${e.message}", e)
+            }
+        }
+    }
+
+    override fun invalidate() {
+        super.invalidate()
+        try {
+            clipAudioPlayer?.release()
+            clipAudioPlayer = null
+            trackAudioPlayer?.release()
+            trackAudioPlayer = null
+        } catch (_: Exception) {}
     }
 }
 

@@ -38,7 +38,7 @@ export const ClipItem: React.FC<ClipItemProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    const numThumbs = Math.max(1, Math.min(10, Math.ceil(clipWidth / 48)));
+    const numThumbs = Math.max(4, Math.min(10, Math.ceil(clipWidth / 48)));
     ThumbnailCache.getTimelineThumbnails(clip.id, clip.uri, numThumbs).then(
       thumbs => {
         if (isMounted) setThumbnails(thumbs);

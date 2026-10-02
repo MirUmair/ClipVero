@@ -2,18 +2,25 @@
  * Clipvero - Modern Reels, Shorts, and Social Video Editor
  */
 
-import React from 'react';
-import { StatusBar, StyleSheet, View } from 'react-native';
+import { StatusBar, StyleSheet, View, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { ErrorBoundary } from './src/components/common/ErrorBoundary';
 import { colors } from './src/theme/colors';
+
+LogBox.ignoreLogs([
+  'Cannot connect to Metro',
+  'Attempted to import the module',
+]);
 
 function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
       <View style={styles.container}>
-        <AppNavigator />
+        <ErrorBoundary>
+          <AppNavigator />
+        </ErrorBoundary>
       </View>
     </SafeAreaProvider>
   );

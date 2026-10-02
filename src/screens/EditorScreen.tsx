@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useCallback,
+} from 'react';
 import { View, StyleSheet, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -92,6 +98,7 @@ export const EditorScreen: React.FC = () => {
   const [stickersModalVisible, setStickersModalVisible] = useState(false);
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [audioModalVisible, setAudioModalVisible] = useState(false);
+  const [audioModalTab, setAudioModalTab] = useState<'music' | 'voiceover' | 'sfx'>('music');
   const [transitionModalVisible, setTransitionModalVisible] = useState(false);
   const [transitionTargetClipId, setTransitionTargetClipId] = useState<
     string | null
@@ -168,13 +175,10 @@ export const EditorScreen: React.FC = () => {
     if (isPlaying) {
       playbackIntervalRef.current = setInterval(() => {
         setCurrentTime(prev => {
-          if (prev >= totalDuration) {
-            setIsPlaying(false);
-            return 0;
-          }
-          return Number((prev + 0.1).toFixed(2));
+          const next = Number((prev + 0.05).toFixed(2));
+          return next >= totalDuration ? totalDuration : next;
         });
-      }, 100);
+      }, 50);
     } else {
       if (playbackIntervalRef.current) {
         clearInterval(playbackIntervalRef.current);
@@ -188,6 +192,75 @@ export const EditorScreen: React.FC = () => {
     };
   }, [isPlaying, totalDuration]);
 
+  // When playback reaches the end of the project, pause and rewind
+  useEffect(() => {
+    if (isPlaying && currentTime >= totalDuration && totalDuration > 0) {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      MediaEngine.pausePreviewAudio();
+    }
+  }, [currentTime, isPlaying, totalDuration]);
+
+  // Synchronize native audio playback with timeline video
+  const activeAudioTrack = project.audioTracks.find(
+    t => currentTime >= t.startTime && currentTime <= t.startTime + t.duration,
+  );
+
+  const syncPreviewAudio = useEffectEvent(() => {
+    if (isPlaying) {
+      const audioClip =
+        activeClipInfo?.clip.type === 'video' ? activeClipInfo?.clip : null;
+
+      const clipPositionMs = activeClipInfo
+        ? Math.round(activeClipInfo.localTime * 1000)
+        : 0;
+
+      const trackPositionMs = activeAudioTrack
+        ? Math.round(
+            (activeAudioTrack.trimStart +
+              (currentTime - activeAudioTrack.startTime)) *
+              1000,
+          )
+        : -1;
+
+      MediaEngine.playPreviewAudio({
+        clipUri: audioClip?.uri,
+        clipVolume: audioClip?.volume ?? 1.0,
+        clipMuted: audioClip?.isMuted ?? false,
+        clipSpeed: audioClip?.speed ?? 1.0,
+        trackUri: activeAudioTrack?.uri,
+        trackVolume: activeAudioTrack?.volume ?? 1.0,
+        trackMuted: activeAudioTrack?.isMuted ?? false,
+        clipPositionMs,
+        trackPositionMs,
+      });
+    } else {
+      MediaEngine.pausePreviewAudio();
+    }
+  });
+
+  // Read the latest playhead when playback or its sources change, without
+  // restarting and seeking native players on every 50 ms timeline tick.
+  useEffect(() => {
+    syncPreviewAudio();
+  }, [
+    isPlaying,
+    activeClipInfo?.clip.id,
+    activeClipInfo?.clip.speed,
+    activeClipInfo?.clip.volume,
+    activeClipInfo?.clip.isMuted,
+    activeAudioTrack?.id,
+    activeAudioTrack?.volume,
+    activeAudioTrack?.isMuted,
+  ]);
+
+  // Clean up native audio players on unmount
+  useEffect(() => {
+    return () => {
+      MediaEngine.stopPreviewAudio();
+    };
+  }, []);
+
   const handleTogglePlay = () => {
     HapticsService.light();
     setIsPlaying(prev => !prev);
@@ -195,6 +268,21 @@ export const EditorScreen: React.FC = () => {
 
   const handleSeek = (newTime: number) => {
     setCurrentTime(newTime);
+    if (!isPlaying) {
+      const seekClipInfo = findClipAtTimelineTime(project.clips, newTime);
+      const seekTrack = project.audioTracks.find(
+        t => newTime >= t.startTime && newTime <= t.startTime + t.duration,
+      );
+      const clipMs = seekClipInfo
+        ? Math.round(seekClipInfo.localTime * 1000)
+        : 0;
+      const trackMs = seekTrack
+        ? Math.round(
+            (seekTrack.trimStart + (newTime - seekTrack.startTime)) * 1000,
+          )
+        : -1;
+      MediaEngine.seekPreviewAudio(clipMs, trackMs);
+    }
   };
 
   // --- CORE EDITING ACTIONS ---
@@ -260,6 +348,101 @@ export const EditorScreen: React.FC = () => {
 
     setSelectedClipId(clip2.id);
     updateProject(updated);
+  };
+
+  // 1b. Freeze Frame: Extract frame thumbnail at playhead and insert as 3s image clip
+  const handleFreezeFrame = async () => {
+    if (!activeClipInfo) {
+      Alert.alert('Cannot Freeze', 'Move playhead over a clip to freeze frame.');
+      return;
+    }
+
+    const { clip, clipIndex, localTime } = activeClipInfo;
+
+    try {
+      HapticsService.snap();
+      const freezeTimeMs = Math.round(localTime * 1000);
+      const freezeThumbUri = await MediaEngine.generateThumbnail(
+        clip.uri,
+        freezeTimeMs,
+        clip.width || 1280,
+        clip.height || 720,
+      );
+
+      const freezeDuration = 3.0;
+      const freezeClip: MediaClip = {
+        id: `freeze_${Date.now()}`,
+        uri: freezeThumbUri,
+        type: 'image',
+        name: `${clip.name} (Freeze)`,
+        duration: freezeDuration,
+        originalDuration: freezeDuration,
+        trimStart: 0,
+        trimEnd: freezeDuration,
+        volume: 0,
+        speed: 1.0,
+        rotation: clip.rotation || 0,
+        flipHorizontal: clip.flipHorizontal || false,
+        flipVertical: clip.flipVertical || false,
+        crop: clip.crop ? { ...clip.crop } : null,
+        filterId: clip.filterId || 'none',
+        adjustments: { ...clip.adjustments },
+        transition: { type: 'none', duration: 0.5 },
+        thumbnailUri: freezeThumbUri,
+        width: clip.width || 1280,
+        height: clip.height || 720,
+        isMuted: true,
+      };
+
+      const newClips = [...project.clips];
+      const splitPoint = localTime;
+      const isNearStart = splitPoint - clip.trimStart < 0.2;
+      const isNearEnd = clip.trimEnd - splitPoint < 0.2;
+
+      if (clip.type === 'image' || (isNearStart && isNearEnd)) {
+        newClips.splice(clipIndex + 1, 0, freezeClip);
+      } else if (isNearStart) {
+        newClips.splice(clipIndex, 0, freezeClip);
+      } else if (isNearEnd) {
+        newClips.splice(clipIndex + 1, 0, freezeClip);
+      } else {
+        const clip1: MediaClip = {
+          ...clip,
+          id: `${clip.id}_1`,
+          name: `${clip.name} (Part 1)`,
+          trimStart: clip.trimStart,
+          trimEnd: splitPoint,
+          duration: calculateEffectiveClipDuration(
+            clip.originalDuration,
+            clip.trimStart,
+            splitPoint,
+            clip.speed,
+          ),
+        };
+
+        const clip2: MediaClip = {
+          ...clip,
+          id: `${clip.id}_2`,
+          name: `${clip.name} (Part 2)`,
+          trimStart: splitPoint,
+          trimEnd: clip.trimEnd,
+          duration: calculateEffectiveClipDuration(
+            clip.originalDuration,
+            splitPoint,
+            clip.trimEnd,
+            clip.speed,
+          ),
+        };
+
+        newClips.splice(clipIndex, 1, clip1, freezeClip, clip2);
+      }
+
+      setSelectedClipId(freezeClip.id);
+      updateProject({ ...project, clips: newClips });
+      Alert.alert('Freeze Frame', 'Inserted 3s freeze frame at playhead.');
+    } catch (e: any) {
+      Alert.alert('Freeze Failed', e?.message || 'Could not freeze frame.');
+    }
   };
 
   // 2. Trim clip handles
@@ -369,20 +552,32 @@ export const EditorScreen: React.FC = () => {
       c.id === selectedClip.id ? { ...c, volume: vol, isMuted: false } : c,
     );
     updateProject({ ...project, clips: newClips }, false);
+    MediaEngine.setPreviewAudioVolume({ clipVolume: vol, clipMuted: false });
   };
 
   const handleToggleMute = () => {
     if (!selectedClip) return;
+    const nextMuted = !selectedClip.isMuted;
     const newClips = project.clips.map(c =>
-      c.id === selectedClip.id ? { ...c, isMuted: !c.isMuted } : c,
+      c.id === selectedClip.id ? { ...c, isMuted: nextMuted } : c,
     );
     updateProject({ ...project, clips: newClips });
+    MediaEngine.setPreviewAudioVolume({
+      clipVolume: selectedClip.volume,
+      clipMuted: nextMuted,
+    });
   };
 
   // 9. Clip Transitions
-  const handleOpenTransition = (clip?: MediaClip) => {
+  const handleOpenTransition = (clipOrClipId?: MediaClip | string) => {
     HapticsService.light();
-    setTransitionTargetClipId(clip ? clip.id : selectedClip?.id || null);
+    const targetId =
+      typeof clipOrClipId === 'string'
+        ? clipOrClipId
+        : clipOrClipId
+        ? clipOrClipId.id
+        : selectedClip?.id || null;
+    setTransitionTargetClipId(targetId);
     setTransitionModalVisible(true);
   };
 
@@ -410,6 +605,9 @@ export const EditorScreen: React.FC = () => {
     switch (action) {
       case 'split':
         handleSplitClip();
+        break;
+      case 'freeze':
+        handleFreezeFrame();
         break;
       case 'transition':
         handleOpenTransition();
@@ -442,6 +640,17 @@ export const EditorScreen: React.FC = () => {
     switch (action) {
       case 'music':
         setSelectedAudioTrack(null);
+        setAudioModalTab('music');
+        setAudioModalVisible(true);
+        break;
+      case 'voiceover':
+        setSelectedAudioTrack(null);
+        setAudioModalTab('voiceover');
+        setAudioModalVisible(true);
+        break;
+      case 'sfx':
+        setSelectedAudioTrack(null);
+        setAudioModalTab('sfx');
         setAudioModalVisible(true);
         break;
       case 'extractAudio':
@@ -453,6 +662,7 @@ export const EditorScreen: React.FC = () => {
       case 'fadeIn':
       case 'fadeOut':
         setSelectedAudioTrack(project.audioTracks[0] || null);
+        setAudioModalTab('music');
         setAudioModalVisible(true);
         break;
     }
@@ -617,6 +827,8 @@ export const EditorScreen: React.FC = () => {
         selectedClipId={selectedClipId}
         currentTime={currentTime}
         totalDuration={totalDuration}
+        isPlaying={isPlaying}
+        onPause={() => setIsPlaying(false)}
         onSelectClip={clip => setSelectedClipId(clip.id)}
         onSeek={handleSeek}
         onTrimClip={handleTrimClip}
@@ -747,37 +959,116 @@ export const EditorScreen: React.FC = () => {
         visible={audioModalVisible}
         onClose={() => setAudioModalVisible(false)}
         track={selectedAudioTrack}
+        initialTab={audioModalTab}
+        currentTime={currentTime}
         onUpdateTrack={track => {
           const updated = project.audioTracks.map(t =>
             t.id === track.id ? track : t,
           );
           updateProject({ ...project, audioTracks: updated });
+          MediaEngine.setPreviewAudioVolume({
+            trackVolume: track.volume,
+            trackMuted: track.isMuted,
+          });
         }}
         onDeleteTrack={id => {
           const updated = project.audioTracks.filter(t => t.id !== id);
+          setSelectedAudioTrack(null);
           updateProject({ ...project, audioTracks: updated });
+          MediaEngine.setPreviewAudioVolume({
+            trackVolume: 0,
+            trackMuted: true,
+          });
         }}
         onExtractAudio={handleExtractAudio}
-        onAddMusic={() => {
-          // Add default royalty-free music track
-          const newMusic: AudioTrack = {
-            id: `music_${Date.now()}`,
-            name: 'Upbeat Reel Beat',
-            uri: 'https://actions.google.com/sounds/v1/sports/rollercoaster_screaming.ogg',
-            duration: totalDuration || 15,
-            originalDuration: 30,
-            startTime: 0,
+        onAddRecordedVoiceover={newTrack => {
+          updateProject({
+            ...project,
+            audioTracks: [...project.audioTracks, newTrack],
+          });
+          Alert.alert('Voiceover Added', 'Recorded voiceover added to timeline.');
+        }}
+        onAddSoundEffect={sfx => {
+          const sfxTrack: AudioTrack = {
+            id: `sfx_${Date.now()}`,
+            name: sfx.name,
+            uri: sfx.uri,
+            duration: sfx.duration || 1.0,
+            originalDuration: sfx.duration || 1.0,
+            startTime: currentTime,
             trimStart: 0,
-            trimEnd: totalDuration || 15,
-            volume: 0.8,
-            fadeInDuration: 0.5,
-            fadeOutDuration: 0.5,
+            trimEnd: sfx.duration || 1.0,
+            volume: 1.0,
+            fadeInDuration: 0,
+            fadeOutDuration: 0,
             isMuted: false,
           };
           updateProject({
             ...project,
-            audioTracks: [...project.audioTracks, newMusic],
+            audioTracks: [...project.audioTracks, sfxTrack],
           });
+          Alert.alert('Sound Effect Added', `Added "${sfx.name}" at playhead.`);
+        }}
+        onPickDeviceMusic={async () => {
+          try {
+            const picked = await MediaEngine.pickAudio();
+            if (picked && picked.uri) {
+              const newTrack: AudioTrack = {
+                id: `music_${Date.now()}`,
+                name: picked.name || 'Device Audio',
+                uri: picked.uri,
+                duration: Math.min(picked.duration, totalDuration || 30),
+                originalDuration: picked.duration,
+                startTime: currentTime,
+                trimStart: 0,
+                trimEnd: Math.min(picked.duration, totalDuration || 30),
+                volume: 0.8,
+                fadeInDuration: 0.5,
+                fadeOutDuration: 0.5,
+                isMuted: false,
+              };
+              updateProject({
+                ...project,
+                audioTracks: [...project.audioTracks, newTrack],
+              });
+              Alert.alert(
+                'Music Added',
+                `Added "${newTrack.name}" to project.`,
+              );
+            }
+          } catch (e: any) {
+            Alert.alert('Audio Picker', e?.message || 'Could not pick audio.');
+          }
+        }}
+        onAddMusic={async () => {
+          try {
+            const starters = await MediaEngine.getStarterMusic();
+            const starter = starters[0];
+            const newMusic: AudioTrack = {
+              id: `music_${Date.now()}`,
+              name: starter?.name || 'Upbeat Reel Beat',
+              uri: starter?.uri || 'asset:/sample_audio.wav',
+              duration: totalDuration || 15,
+              originalDuration: starter?.duration || 15,
+              startTime: 0,
+              trimStart: 0,
+              trimEnd: totalDuration || 15,
+              volume: 0.8,
+              fadeInDuration: 0.5,
+              fadeOutDuration: 0.5,
+              isMuted: false,
+            };
+            updateProject({
+              ...project,
+              audioTracks: [...project.audioTracks, newMusic],
+            });
+            Alert.alert('Music Added', 'Added Upbeat Reel Beat to project.');
+          } catch (e: any) {
+            Alert.alert(
+              'Music Error',
+              e?.message || 'Could not load starter music.',
+            );
+          }
         }}
       />
 

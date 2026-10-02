@@ -27,9 +27,128 @@ export interface NativeExportResult {
   resolution: string;
 }
 
+export interface AudioSource {
+  uri: string;
+  name: string;
+  duration: number;
+}
+
+export interface PreviewAudioVolume {
+  clipVolume: number;
+  clipMuted: boolean;
+  trackVolume: number;
+  trackMuted: boolean;
+}
+
+export interface PreviewAudioOptions extends PreviewAudioVolume {
+  clipUri?: string;
+  clipSpeed: number;
+  trackUri?: string;
+  clipPositionMs: number;
+  trackPositionMs: number;
+}
+
 export class MediaEngine {
   private static eventEmitter: NativeEventEmitter | null = null;
   private static isMock: boolean = !ClipveroMediaEngine;
+  private static previewVolume: PreviewAudioVolume = {
+    clipVolume: 1,
+    clipMuted: false,
+    trackVolume: 1,
+    trackMuted: false,
+  };
+
+  // Playback controls are also called during mount/unmount. Missing native
+  // support must not crash the editor or leave an unhandled rejection.
+  private static async controlPreviewAudio(
+    method: string,
+    ...args: Array<string | number | boolean | null>
+  ): Promise<boolean> {
+    if (!ClipveroMediaEngine?.[method]) return false;
+    try {
+      return await ClipveroMediaEngine[method](...args);
+    } catch (error) {
+      console.warn(`Preview audio ${method} failed:`, error);
+      return false;
+    }
+  }
+
+  public static playPreviewAudio(
+    options: PreviewAudioOptions,
+  ): Promise<boolean> {
+    this.previewVolume = {
+      clipVolume: options.clipVolume,
+      clipMuted: options.clipMuted,
+      trackVolume: options.trackVolume,
+      trackMuted: options.trackMuted,
+    };
+    return this.controlPreviewAudio(
+      'playPreviewAudio',
+      options.clipUri ?? null,
+      options.clipVolume,
+      options.clipMuted,
+      options.clipSpeed,
+      options.trackUri ?? null,
+      options.trackVolume,
+      options.trackMuted,
+      options.clipPositionMs,
+      options.trackPositionMs,
+    );
+  }
+
+  public static pausePreviewAudio(): Promise<boolean> {
+    return this.controlPreviewAudio('pausePreviewAudio');
+  }
+
+  public static stopPreviewAudio(): Promise<boolean> {
+    this.previewVolume = {
+      clipVolume: 1,
+      clipMuted: false,
+      trackVolume: 1,
+      trackMuted: false,
+    };
+    return this.controlPreviewAudio('stopPreviewAudio');
+  }
+
+  public static seekPreviewAudio(
+    clipPositionMs: number,
+    trackPositionMs: number,
+  ): Promise<boolean> {
+    return this.controlPreviewAudio(
+      'seekPreviewAudio',
+      clipPositionMs,
+      trackPositionMs,
+    );
+  }
+
+  public static setPreviewAudioVolume(
+    options: Partial<PreviewAudioVolume>,
+  ): Promise<boolean> {
+    this.previewVolume = { ...this.previewVolume, ...options };
+    const { clipVolume, clipMuted, trackVolume, trackMuted } =
+      this.previewVolume;
+    return this.controlPreviewAudio(
+      'setPreviewAudioVolume',
+      clipVolume,
+      clipMuted,
+      trackVolume,
+      trackMuted,
+    );
+  }
+
+  public static async pickAudio(): Promise<AudioSource | null> {
+    if (!ClipveroMediaEngine?.pickAudio) {
+      throw new Error('Audio picking is unavailable on this device.');
+    }
+    return ClipveroMediaEngine.pickAudio();
+  }
+
+  public static async getStarterMusic(): Promise<AudioSource[]> {
+    if (!ClipveroMediaEngine?.getStarterMusic) {
+      throw new Error('Starter music is unavailable on this device.');
+    }
+    return ClipveroMediaEngine.getStarterMusic();
+  }
 
   private static getEmitter(): NativeEventEmitter | null {
     if (!this.eventEmitter && ClipveroMediaEngine) {
@@ -257,5 +376,85 @@ export class MediaEngine {
       return await ClipveroMediaEngine.cancelExport();
     }
     return true;
+  }
+
+  /**
+   * Start recording microphone voiceover
+   */
+  public static async startVoiceoverRecording(): Promise<{
+    isRecording: boolean;
+    filePath?: string;
+  }> {
+    if (ClipveroMediaEngine?.startVoiceoverRecording) {
+      return await ClipveroMediaEngine.startVoiceoverRecording();
+    }
+    return { isRecording: true, filePath: 'file:///mock_voiceover.m4a' };
+  }
+
+  /**
+   * Stop recording microphone voiceover
+   */
+  public static async stopVoiceoverRecording(): Promise<{
+    uri: string;
+    name: string;
+    duration: number;
+  }> {
+    if (ClipveroMediaEngine?.stopVoiceoverRecording) {
+      return await ClipveroMediaEngine.stopVoiceoverRecording();
+    }
+    return {
+      uri: 'file:///mock_voiceover.m4a',
+      name: 'Voiceover',
+      duration: 3.0,
+    };
+  }
+
+  /**
+   * Fetch built-in sound effects (SFX)
+   */
+  public static async getSoundEffects(): Promise<
+    Array<{ id: string; name: string; uri: string; duration: number }>
+  > {
+    if (ClipveroMediaEngine?.getSoundEffects) {
+      return await ClipveroMediaEngine.getSoundEffects();
+    }
+    return [
+      {
+        id: 'sfx_swoosh',
+        name: 'Whoosh Transition',
+        uri: 'asset:/sample_sfx/swoosh.wav',
+        duration: 0.45,
+      },
+      {
+        id: 'sfx_pop',
+        name: 'Pop / Bubble',
+        uri: 'asset:/sample_sfx/pop.wav',
+        duration: 0.15,
+      },
+      {
+        id: 'sfx_ding',
+        name: 'Success Ding',
+        uri: 'asset:/sample_sfx/ding.wav',
+        duration: 0.8,
+      },
+      {
+        id: 'sfx_click',
+        name: 'Camera Click',
+        uri: 'asset:/sample_sfx/click.wav',
+        duration: 0.08,
+      },
+      {
+        id: 'sfx_bell',
+        name: 'Clear Bell',
+        uri: 'asset:/sample_sfx/bell.wav',
+        duration: 1.2,
+      },
+      {
+        id: 'sfx_riser',
+        name: 'Tension Riser',
+        uri: 'asset:/sample_sfx/riser.wav',
+        duration: 0.7,
+      },
+    ];
   }
 }

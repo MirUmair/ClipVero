@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,10 +21,13 @@ interface TimelineViewProps {
   selectedClipId: string | null;
   currentTime: number;
   totalDuration: number;
+  isPlaying?: boolean;
+  onPause?: () => void;
   onSelectClip: (clip: MediaClip) => void;
   onSeek: (time: number) => void;
   onTrimClip: (clipId: string, newStart: number, newEnd: number) => void;
   onAddMedia: () => void;
+  onTransitionPress?: (clipId: string) => void;
   onSelectTextLayer?: (layer: TextLayer) => void;
   onSelectAudioTrack?: (track: AudioTrack) => void;
 }
@@ -36,32 +39,52 @@ const HALF_SCREEN = SCREEN_WIDTH / 2;
 export const TimelineView: React.FC<TimelineViewProps> = ({
   project,
   selectedClipId,
-  currentTime: _currentTime,
+  currentTime,
   totalDuration,
+  isPlaying,
+  onPause,
   onSelectClip,
   onSeek,
   onTrimClip,
   onAddMedia,
+  onTransitionPress,
   onSelectTextLayer,
   onSelectAudioTrack,
 }) => {
   const scrollRef = useRef<any>(null);
-  const isUserScrolling = useRef(false);
+  const isUserDragging = useRef(false);
+
+  // Auto-scroll timeline strip smoothly under the center playhead during playback
+  useEffect(() => {
+    if (!isUserDragging.current && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        x: currentTime * PIXELS_PER_SECOND,
+        animated: false,
+      });
+    }
+  }, [currentTime]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!isUserScrolling.current) return;
+    if (!isUserDragging.current) return;
     const scrollX = event.nativeEvent.contentOffset.x;
     const time = Math.max(0, scrollX / PIXELS_PER_SECOND);
     onSeek(Number(Math.min(totalDuration, time).toFixed(2)));
   };
 
   const handleScrollBeginDrag = () => {
-    isUserScrolling.current = true;
+    isUserDragging.current = true;
+    if (isPlaying) {
+      onPause?.();
+    }
     HapticsService.light();
   };
 
   const handleScrollEndDrag = () => {
-    isUserScrolling.current = false;
+    isUserDragging.current = false;
+  };
+
+  const handleMomentumScrollEnd = () => {
+    isUserDragging.current = false;
   };
 
   const timelineContentWidth = Math.max(
@@ -84,6 +107,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         onScroll={handleScroll}
         onScrollBeginDrag={handleScrollBeginDrag}
         onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
         scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scrollContent,
@@ -102,15 +126,33 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
           {/* Video Clips Track */}
           <View style={styles.trackRow}>
-            {project.clips.map(clip => (
-              <ClipItem
-                key={clip.id}
-                clip={clip}
-                isSelected={selectedClipId === clip.id}
-                pixelsPerSecond={PIXELS_PER_SECOND}
-                onSelect={() => onSelectClip(clip)}
-                onTrimChange={(start, end) => onTrimClip(clip.id, start, end)}
-              />
+            {project.clips.map((clip, index) => (
+              <React.Fragment key={clip.id}>
+                <ClipItem
+                  clip={clip}
+                  isSelected={selectedClipId === clip.id}
+                  pixelsPerSecond={PIXELS_PER_SECOND}
+                  onSelect={() => onSelectClip(clip)}
+                  onTrimChange={(start, end) => onTrimClip(clip.id, start, end)}
+                />
+                {index < project.clips.length - 1 && (
+                  <Pressable
+                    style={styles.transitionBtn}
+                    onPress={() => onTransitionPress?.(clip.id)}
+                    hitSlop={6}
+                  >
+                    <AppIcon
+                      name="layers"
+                      size={10}
+                      color={
+                        clip.transition?.type && clip.transition.type !== 'none'
+                          ? colors.primaryLight
+                          : colors.textMuted
+                      }
+                    />
+                  </Pressable>
+                )}
+              </React.Fragment>
             ))}
 
             {/* Add Media Button */}
@@ -273,5 +315,18 @@ const styles = StyleSheet.create({
     flex: 1,
     width: 2,
     backgroundColor: colors.timelinePlayhead,
+  },
+  transitionBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginHorizontal: -4,
+    zIndex: 10,
   },
 });

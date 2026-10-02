@@ -11,15 +11,21 @@ export class SharingService {
    */
   public static async shareVideo(
     filePath: string,
-    title: string = 'Share Video',
+    title: string = 'Clipvero Video',
   ): Promise<boolean> {
     try {
       const shareUrl = filePath.startsWith('file://')
         ? filePath
         : `file://${filePath}`;
+
+      const shareMessage =
+        Platform.OS === 'android'
+          ? `${title || 'Clipvero Video'}\n${shareUrl}`
+          : title || 'Check out my video created with Clipvero!';
+
       const result = await Share.share({
-        title,
-        message: Platform.OS === 'android' ? undefined : title,
+        title: title || 'Clipvero Video',
+        message: shareMessage,
         url: shareUrl,
       });
 
@@ -38,9 +44,12 @@ export class SharingService {
     title: string = 'Clipvero',
   ): Promise<boolean> {
     try {
+      const safeMessage =
+        message?.trim() ||
+        'Check out Clipvero - Video Editor for Reels and Shorts';
       const result = await Share.share({
-        title,
-        message,
+        title: title || 'Clipvero',
+        message: safeMessage,
       });
       return result.action === Share.sharedAction;
     } catch (error) {

@@ -19,16 +19,20 @@ export type MainCategory =
 export type EditSubAction =
   | 'split'
   | 'trim'
+  | 'transition'
   | 'speed'
   | 'crop'
   | 'rotate'
   | 'flip'
+  | 'freeze'
   | 'duplicate'
   | 'delete'
   | 'volume';
 
 export type AudioSubAction =
   | 'music'
+  | 'voiceover'
+  | 'sfx'
   | 'extractAudio'
   | 'originalVolume'
   | 'fadeIn'
@@ -54,6 +58,7 @@ interface EditorBottomToolbarProps {
   onAdjustPress: () => void;
   onRatioPress: () => void;
   onStickersPress: () => void;
+  onTransitionPress?: () => void;
   hasSelectedClip: boolean;
 }
 
@@ -78,9 +83,11 @@ const EDIT_ACTIONS: Array<{
   danger?: boolean;
 }> = [
   { id: 'split', label: 'Split', icon: 'scissors' },
+  { id: 'transition', label: 'Transition', icon: 'layers' },
   { id: 'speed', label: 'Speed', icon: 'speed' },
   { id: 'volume', label: 'Volume', icon: 'volume' },
   { id: 'crop', label: 'Crop', icon: 'crop' },
+  { id: 'freeze', label: 'Freeze', icon: 'pause' },
   { id: 'rotate', label: 'Rotate', icon: 'rotate' },
   { id: 'flip', label: 'Flip', icon: 'flip' },
   { id: 'duplicate', label: 'Duplicate', icon: 'copy' },
@@ -93,7 +100,9 @@ const AUDIO_ACTIONS: Array<{
   icon: IconName;
 }> = [
   { id: 'music', label: 'Add Music', icon: 'music' },
-  { id: 'extractAudio', label: 'Extract Audio', icon: 'sparkles' },
+  { id: 'voiceover', label: 'Voiceover', icon: 'mic' },
+  { id: 'sfx', label: 'Sound FX', icon: 'sparkles' },
+  { id: 'extractAudio', label: 'Extract', icon: 'layers' },
   { id: 'originalVolume', label: 'Original Vol', icon: 'volume' },
   { id: 'fadeIn', label: 'Fade In', icon: 'adjust' },
   { id: 'fadeOut', label: 'Fade Out', icon: 'adjust' },

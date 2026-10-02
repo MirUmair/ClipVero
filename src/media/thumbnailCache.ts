@@ -51,6 +51,13 @@ export class ThumbnailCache {
   }
 
   /**
+   * Synchronously returns cached thumbnails for dynamic preview scrub
+   */
+  public static getCachedThumbnails(clipId: string): string[] | null {
+    return this.cache.get(clipId)?.thumbnails || null;
+  }
+
+  /**
    * Clear cache on memory warning or project switch
    */
   public static clear() {

@@ -11,11 +11,13 @@ import { HapticsService } from '../../services/hapticsService';
 interface VolumeModalProps {
   visible: boolean;
   onClose: () => void;
-  volume: number; // 0 to 1
+  volume: number; // 0 to 2
   isMuted: boolean;
   onVolumeChange: (vol: number) => void;
   onToggleMute: () => void;
 }
+
+const PRESETS = [0, 50, 100, 150, 200];
 
 export const VolumeModal: React.FC<VolumeModalProps> = ({
   visible,
@@ -28,17 +30,54 @@ export const VolumeModal: React.FC<VolumeModalProps> = ({
   const percent = Math.round((isMuted ? 0 : volume) * 100);
 
   return (
-    <Modal visible={visible} onClose={onClose} title="Clip Volume">
+    <Modal visible={visible} onClose={onClose} title="Volume & Boost">
       <View style={styles.container}>
         <CustomSlider
-          label="Volume"
+          label={percent > 100 ? 'Volume (Boosted)' : 'Volume'}
           value={percent}
           min={0}
-          max={100}
+          max={200}
           step={1}
           onValueChange={val => onVolumeChange(val / 100)}
           formatValue={val => `${val}%`}
+          activeColor={percent > 100 ? colors.accent : colors.primary}
         />
+
+        {/* Quick Presets */}
+        <View style={styles.presetRow}>
+          {PRESETS.map(p => {
+            const isSelected = percent === p;
+            return (
+              <Pressable
+                key={p}
+                onPress={() => {
+                  HapticsService.light();
+                  if (p === 0) {
+                    if (!isMuted) onToggleMute();
+                  } else {
+                    if (isMuted) onToggleMute();
+                    onVolumeChange(p / 100);
+                  }
+                }}
+                style={[
+                  styles.presetChip,
+                  isSelected && styles.presetChipActive,
+                  p > 100 && styles.boostChip,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.presetText,
+                    isSelected && styles.presetTextActive,
+                    p > 100 && styles.boostText,
+                  ]}
+                >
+                  {p === 100 ? '100%' : p > 100 ? `${p}% ⚡` : `${p}%`}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <View style={styles.actionRow}>
           <Pressable
@@ -54,7 +93,7 @@ export const VolumeModal: React.FC<VolumeModalProps> = ({
               color={isMuted ? colors.error : colors.text}
             />
             <Text style={[styles.muteText, isMuted && { color: colors.error }]}>
-              {isMuted ? 'Unmute Clip' : 'Mute Clip'}
+              {isMuted ? 'Unmute Clip' : 'Mute Original Audio'}
             </Text>
           </Pressable>
         </View>
@@ -65,7 +104,40 @@ export const VolumeModal: React.FC<VolumeModalProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  presetChip: {
+    flex: 1,
+    paddingVertical: spacing.xs + 2,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  presetChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryLight,
+  },
+  presetText: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  presetTextActive: {
+    color: '#FFFFFF',
+  },
+  boostChip: {
+    borderColor: colors.accent,
+  },
+  boostText: {
+    color: colors.accent,
   },
   actionRow: {
     marginTop: spacing.md,

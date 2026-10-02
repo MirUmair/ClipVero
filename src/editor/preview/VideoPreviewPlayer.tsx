@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import { colors } from '../../theme/colors';
 import { Project, MediaClip, TextLayer } from '../../types/project';
 import { calculateCanvasPreviewBounds } from '../canvas/canvasUtils';
 import { FILTER_PRESETS } from '../filters/filterPresets';
+import { findClipAtTimelineTime } from '../../utils/timeUtils';
+import { ThumbnailCache } from '../../media/thumbnailCache';
 
 interface VideoPreviewPlayerProps {
   project: Project;
@@ -38,28 +40,75 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   const containerMaxHeight = 360;
   const containerMaxWidth = SCREEN_WIDTH - 24;
 
+  const safeClips = project?.clips || [];
+  const safeTextLayers = project?.textLayers || [];
+  const safeStickerLayers = project?.stickerLayers || [];
+
   const previewBounds = calculateCanvasPreviewBounds(
-    project.aspectRatio,
+    project?.aspectRatio || '9:16',
     containerMaxWidth,
     containerMaxHeight,
     activeClip?.width || 1080,
     activeClip?.height || 1920,
   );
 
-  const activeFilter = FILTER_PRESETS.find(f => f.id === activeClip?.filterId);
+  const activeClipInfo = findClipAtTimelineTime(safeClips, currentTime);
+  const currentClip =
+    activeClipInfo?.clip || activeClip || safeClips[0] || null;
 
-  // Active transforms for current clip
-  const rotation = activeClip?.rotation || 0;
-  const flipH = activeClip?.flipHorizontal ? -1 : 1;
-  const flipV = activeClip?.flipVertical ? -1 : 1;
+  const activeFilter = FILTER_PRESETS.find(f => f.id === currentClip?.filterId);
+
+  // Active transforms for currentClip
+  const rotation = currentClip?.rotation || 0;
+  const flipH = currentClip?.flipHorizontal ? -1 : 1;
+  const flipV = currentClip?.flipVertical ? -1 : 1;
+
+  // Retrieve cached timeline frames to dynamically animate preview across playback and scrub
+  const clipId = currentClip?.id;
+  const clipUri = currentClip?.uri;
+  const [frameCache, setFrameCache] = useState<{
+    clipId: string;
+    uri: string;
+    frames: string[];
+  } | null>(null);
+  const cachedFrames =
+    frameCache?.clipId === clipId && frameCache?.uri === clipUri
+      ? frameCache?.frames
+      : null;
+
+  useEffect(() => {
+    if (!clipId || !clipUri) return;
+    let cancelled = false;
+    ThumbnailCache.getTimelineThumbnails(clipId, clipUri, 8)
+      .then(frames => {
+        if (!cancelled) setFrameCache({ clipId, uri: clipUri, frames });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [clipId, clipUri]);
+
+  let activeFrameUri = currentClip?.thumbnailUri || currentClip?.uri;
+
+  if (cachedFrames && cachedFrames.length > 0 && activeClipInfo) {
+    // Native thumbnails cover the original source, including trimmed-out time.
+    const span = Math.max(0.1, activeClipInfo.clip.originalDuration);
+    const progress = Math.min(1, Math.max(0, activeClipInfo.localTime / span));
+    const frameIndex = Math.min(
+      cachedFrames.length - 1,
+      Math.round(progress * (cachedFrames.length - 1)),
+    );
+    activeFrameUri = cachedFrames[frameIndex] || activeFrameUri;
+  }
 
   // Active text layers at currentTime
-  const visibleTextLayers = project.textLayers.filter(
+  const visibleTextLayers = safeTextLayers.filter(
     t => currentTime >= t.startTime && currentTime <= t.endTime,
   );
 
   // Active sticker layers at currentTime
-  const visibleStickerLayers = project.stickerLayers.filter(
+  const visibleStickerLayers = safeStickerLayers.filter(
     s => currentTime >= s.startTime && currentTime <= s.endTime,
   );
 
@@ -72,7 +121,24 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
           { width: previewBounds.width, height: previewBounds.height },
         ]}
       >
-        {activeClip ? (
+        {/* Blur Canvas Background */}
+        {project?.canvasBackground?.type === 'blur' && activeFrameUri && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Image
+              source={{ uri: activeFrameUri }}
+              style={[StyleSheet.absoluteFill, { opacity: 0.65 }]}
+              resizeMode="cover"
+              blurRadius={20}
+            />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: 'rgba(0,0,0,0.35)' },
+              ]}
+            />
+          </View>
+        )}
+        {currentClip ? (
           <View
             style={[
               styles.mediaContainer,
@@ -85,12 +151,14 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
               },
             ]}
           >
-            {activeClip.thumbnailUri || activeClip.uri ? (
+            {activeFrameUri ? (
               <Image
-                source={{ uri: activeClip.thumbnailUri || activeClip.uri }}
+                source={{ uri: activeFrameUri }}
                 style={styles.mediaImage}
                 resizeMode={
-                  project.canvasBackground.type === 'fill' ? 'cover' : 'contain'
+                  project?.canvasBackground?.type === 'fill'
+                    ? 'cover'
+                    : 'contain'
                 }
               />
             ) : (

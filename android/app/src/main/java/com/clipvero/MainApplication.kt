@@ -16,6 +16,8 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           add(ClipveroMediaEnginePackage())
         },
+      jsBundleAssetPath = "index.android.bundle",
+      useDevSupport = BuildConfig.DEBUG,
     )
   }
 

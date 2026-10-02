@@ -30,6 +30,19 @@ export const TEXT_COLORS = [
   '#F97316', // Orange
 ];
 
+export const TEXT_BACKGROUND_COLORS: Array<{
+  id: string;
+  name: string;
+  value: string | undefined;
+}> = [
+  { id: 'none', name: 'None', value: undefined },
+  { id: 'dark', name: 'Soft Black', value: 'rgba(0, 0, 0, 0.4)' },
+  { id: 'black', name: 'Black', value: '#000000' },
+  { id: 'white', name: 'White', value: '#FFFFFF' },
+  { id: 'yellow', name: 'Yellow', value: '#FACC15' },
+  { id: 'blue', name: 'Blue', value: '#3B82F6' },
+];
+
 export const TEXT_ANIMATIONS: Array<{
   type: TextAnimationType;
   label: string;
