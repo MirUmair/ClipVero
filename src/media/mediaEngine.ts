@@ -457,4 +457,54 @@ export class MediaEngine {
       },
     ];
   }
+
+  /**
+   * Fetch built-in sample starter videos
+   */
+  public static async getSampleVideos(): Promise<MediaClip[]> {
+    if (ClipveroMediaEngine?.getStarterSamples) {
+      try {
+        const raw = await ClipveroMediaEngine.getStarterSamples();
+        if (Array.isArray(raw) && raw.length > 0) {
+          return raw.map((item: any) => ({
+            id: `sample_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 6)}`,
+            name: item.name || 'Sample Video',
+            uri: item.uri,
+            type: 'video',
+            duration: item.duration || 10.0,
+            originalDuration: item.originalDuration || item.duration || 10.0,
+            trimStart: item.trimStart || 0,
+            trimEnd: item.trimEnd || item.duration || 10.0,
+            speed: 1.0,
+            volume: 1.0,
+            isMuted: false,
+            rotation: 0,
+            flipHorizontal: false,
+            flipVertical: false,
+            crop: null,
+            filterId: 'none',
+            adjustments: {
+              brightness: 0,
+              contrast: 0,
+              saturation: 0,
+              exposure: 0,
+              temperature: 0,
+              highlights: 0,
+              shadows: 0,
+              sharpen: 0,
+            },
+            transition: { type: 'none', duration: 0.5 },
+            thumbnailUri: item.thumbnailUri,
+            width: item.width || 1080,
+            height: item.height || 1920,
+          }));
+        }
+      } catch (e) {
+        console.warn('Failed to load starter samples from native module:', e);
+      }
+    }
+    return [];
+  }
 }

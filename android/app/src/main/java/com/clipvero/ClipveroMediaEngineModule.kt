@@ -289,6 +289,14 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     }
 
     private fun setRetrieverDataSource(retriever: MediaMetadataRetriever, uriStr: String) {
+        if (uriStr.startsWith("asset:/")) {
+            val assetPath = uriStr.removePrefix("asset:/")
+            try {
+                val afd = reactContext.assets.openFd(assetPath)
+                retriever.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                return
+            } catch (_: Exception) {}
+        }
         val resolvedUri = ensureLocalUri(uriStr)
         if (resolvedUri.scheme == "content") {
             reactContext.contentResolver.openFileDescriptor(resolvedUri, "r")?.use { pfd ->
@@ -559,16 +567,20 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 val cacheDir = File(reactContext.cacheDir, "clipvero_thumbs")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
 
+                val targetW = if (count > 10) 480 else 120
+                val targetH = if (count > 10) 640 else 120
+
                 for (i in 0 until count) {
                     val targetUs = i * intervalUs
                     val bitmap = retriever.getFrameAtTime(targetUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        ?: retriever.getFrameAtTime(targetUs, MediaMetadataRetriever.OPTION_CLOSEST)
                         ?: retriever.frameAtTime
 
                     if (bitmap != null) {
-                        val scaled = Bitmap.createScaledBitmap(bitmap, 120, 120, true)
+                        val scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
                         val thumbFile = File(cacheDir, "tl_${System.currentTimeMillis()}_${i}.jpg")
                         FileOutputStream(thumbFile).use { out ->
-                            scaled.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                            scaled.compress(Bitmap.CompressFormat.JPEG, if (count > 10) 80 else 70, out)
                         }
                         if (scaled != bitmap) scaled.recycle()
                         bitmap.recycle()
@@ -578,11 +590,28 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
 
                 promise.resolve(thumbs)
             } catch (e: Exception) {
-                val fallbackThumbs = Arguments.createArray()
-                for (i in 0 until count) {
-                    fallbackThumbs.pushString(uriStr)
+                // Ensure fallback is always an image file, never a raw MP4 video path
+                try {
+                    val fallbackDir = File(reactContext.cacheDir, "clipvero_fallback")
+                    if (!fallbackDir.exists()) fallbackDir.mkdirs()
+                    val fallbackFile = File(fallbackDir, "fallback_thumb.jpg")
+                    if (!fallbackFile.exists() || fallbackFile.length() == 0L) {
+                        val blankBmp = Bitmap.createBitmap(360, 640, Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(blankBmp)
+                        canvas.drawColor(android.graphics.Color.parseColor("#1A1A1A"))
+                        FileOutputStream(fallbackFile).use { out ->
+                            blankBmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                        }
+                        blankBmp.recycle()
+                    }
+                    val fallbackThumbs = Arguments.createArray()
+                    for (i in 0 until count) {
+                        fallbackThumbs.pushString("file://${fallbackFile.absolutePath}")
+                    }
+                    promise.resolve(fallbackThumbs)
+                } catch (_: Exception) {
+                    promise.resolve(Arguments.createArray())
                 }
-                promise.resolve(fallbackThumbs)
             } finally {
                 try {
                     retriever.release()
@@ -1175,6 +1204,23 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     fun startVoiceoverRecording(promise: Promise) {
         mainHandler.post {
             try {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(
+                        reactContext,
+                        android.Manifest.permission.RECORD_AUDIO
+                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    promise.reject("PERMISSION_DENIED", "Microphone permission RECORD_AUDIO has not been granted")
+                    return@post
+                }
+
+                try {
+                    voiceoverRecorder?.stop()
+                } catch (_: Exception) {}
+                try {
+                    voiceoverRecorder?.release()
+                } catch (_: Exception) {}
+                voiceoverRecorder = null
+
                 val voiceoverDir = File(reactContext.filesDir, "voiceovers")
                 if (!voiceoverDir.exists()) voiceoverDir.mkdirs()
 
@@ -1216,8 +1262,8 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         mainHandler.post {
             try {
                 voiceoverRecorder?.let {
-                    it.stop()
-                    it.release()
+                    try { it.stop() } catch (_: Exception) {}
+                    try { it.release() } catch (_: Exception) {}
                 }
                 voiceoverRecorder = null
 

@@ -46,7 +46,7 @@ export class ThumbnailCache {
 
       return thumbs;
     } catch {
-      return Array(count).fill(uri);
+      return [];
     }
   }
 

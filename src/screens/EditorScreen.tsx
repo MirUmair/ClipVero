@@ -103,7 +103,9 @@ export const EditorScreen: React.FC = () => {
   const [selectedPipId, setSelectedPipId] = useState<string | null>(null);
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [audioModalVisible, setAudioModalVisible] = useState(false);
-  const [audioModalTab, setAudioModalTab] = useState<'music' | 'voiceover' | 'sfx'>('music');
+  const [audioModalTab, setAudioModalTab] = useState<
+    'music' | 'voiceover' | 'sfx'
+  >('music');
   const [transitionModalVisible, setTransitionModalVisible] = useState(false);
   const [transitionTargetClipId, setTransitionTargetClipId] = useState<
     string | null
@@ -358,7 +360,10 @@ export const EditorScreen: React.FC = () => {
   // 1b. Freeze Frame: Extract frame thumbnail at playhead and insert as 3s image clip
   const handleFreezeFrame = async () => {
     if (!activeClipInfo) {
-      Alert.alert('Cannot Freeze', 'Move playhead over a clip to freeze frame.');
+      Alert.alert(
+        'Cannot Freeze',
+        'Move playhead over a clip to freeze frame.',
+      );
       return;
     }
 
@@ -576,7 +581,10 @@ export const EditorScreen: React.FC = () => {
     );
     updateProject({ ...project, clips: newClips });
     setSpeedModalVisible(false);
-    Alert.alert('Speed Curve', `Applied "${curve.preset}" speed curve to clip.`);
+    Alert.alert(
+      'Speed Curve',
+      `Applied "${curve.preset}" speed curve to clip.`,
+    );
   };
 
   // 7c. Reverse clip
@@ -824,7 +832,9 @@ export const EditorScreen: React.FC = () => {
 
   const handleUpdatePip = (updatedPip: PipLayer) => {
     const existing = project.pipLayers || [];
-    const updated = existing.map(p => (p.id === updatedPip.id ? updatedPip : p));
+    const updated = existing.map(p =>
+      p.id === updatedPip.id ? updatedPip : p,
+    );
     updateProject({ ...project, pipLayers: updated }, false);
   };
 
@@ -1061,7 +1071,10 @@ export const EditorScreen: React.FC = () => {
             ...project,
             audioTracks: [...project.audioTracks, newTrack],
           });
-          Alert.alert('Voiceover Added', 'Recorded voiceover added to timeline.');
+          Alert.alert(
+            'Voiceover Added',
+            'Recorded voiceover added to timeline.',
+          );
         }}
         onAddSoundEffect={sfx => {
           const sfxTrack: AudioTrack = {

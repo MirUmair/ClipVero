@@ -123,7 +123,17 @@ export const MediaPickerScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useAppNavigation();
   const [selectedClips, setSelectedClips] = useState<MediaClip[]>([]);
+  const [sampleClips, setSampleClips] =
+    useState<Array<Omit<MediaClip, 'id'>>>(SAMPLE_MEDIA);
   const [isPickingFromDevice, setIsPickingFromDevice] = useState(false);
+
+  useEffect(() => {
+    MediaEngine.getSampleVideos().then(nativeSamples => {
+      if (nativeSamples && nativeSamples.length > 0) {
+        setSampleClips(nativeSamples);
+      }
+    });
+  }, []);
 
   const handlePickFromDevice = async () => {
     try {
@@ -146,7 +156,7 @@ export const MediaPickerScreen: React.FC = () => {
     }
   };
 
-  const handleAddSample = (sample: (typeof SAMPLE_MEDIA)[0]) => {
+  const handleAddSample = (sample: Omit<MediaClip, 'id'>) => {
     HapticsService.light();
     const newClip: MediaClip = {
       ...sample,
@@ -262,7 +272,7 @@ export const MediaPickerScreen: React.FC = () => {
         {/* Sample / Available Media Gallery */}
         <Text style={styles.sectionHeader}>Available Footage & Samples</Text>
         <View style={styles.samplesGrid}>
-          {SAMPLE_MEDIA.map((item, idx) => (
+          {sampleClips.map((item, idx) => (
             <Pressable
               key={`sample_${idx}`}
               onPress={() => handleAddSample(item)}

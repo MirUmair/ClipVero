@@ -54,12 +54,7 @@ export interface CropRect {
   ratio: AspectRatioType;
 }
 
-export type SpeedCurvePreset =
-  | 'none'
-  | 'montage'
-  | 'hero'
-  | 'bullet'
-  | 'jump';
+export type SpeedCurvePreset = 'none' | 'montage' | 'hero' | 'bullet' | 'jump';
 
 export interface SpeedPoint {
   time: number; // 0..1 normalized time

@@ -6,6 +6,8 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { spacing, borderRadius } from '../../theme/spacing';
@@ -78,8 +80,44 @@ export const AudioModal: React.FC<AudioModalProps> = ({
     }
   }, [visible, initialTab]);
 
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    if (Platform.OS === 'android') {
+      try {
+        const check = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        );
+        if (check) return true;
+
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message:
+              'Clipvero needs access to your microphone to record voiceover audio tracks.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Deny',
+          },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn('Microphone permission check failed:', err);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleStartVoiceover = async () => {
     try {
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        Alert.alert(
+          'Microphone Permission Required',
+          'Please enable microphone access for Clipvero in your device settings to record voiceovers.',
+        );
+        return;
+      }
+
       HapticsService.medium();
       const res = await MediaEngine.startVoiceoverRecording();
       if (res.isRecording) {
@@ -91,7 +129,7 @@ export const AudioModal: React.FC<AudioModalProps> = ({
       }
     } catch (e: any) {
       Alert.alert(
-        'Microphone Permission',
+        'Microphone Error',
         'Could not access microphone: ' + (e?.message || 'Permission required'),
       );
     }

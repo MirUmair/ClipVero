@@ -51,7 +51,8 @@ export const PipModal: React.FC<PipModalProps> = ({
   onUpdatePip,
   onDeletePip,
 }) => {
-  const activePip = pipLayers.find(p => p.id === selectedPipId) || pipLayers[0] || null;
+  const activePip =
+    pipLayers.find(p => p.id === selectedPipId) || pipLayers[0] || null;
 
   const handlePickMediaForPip = async () => {
     try {
@@ -116,8 +117,17 @@ export const PipModal: React.FC<PipModalProps> = ({
                     onSelectPip(pip.id);
                   }}
                 >
-                  <AppIcon name="pip" size={16} color={isSelected ? colors.primary : colors.textSecondary} />
-                  <Text style={[styles.pipCardText, isSelected && styles.selectedPipCardText]}>
+                  <AppIcon
+                    name="pip"
+                    size={16}
+                    color={isSelected ? colors.primary : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.pipCardText,
+                      isSelected && styles.selectedPipCardText,
+                    ]}
+                  >
                     PIP #{idx + 1}
                   </Text>
                 </Pressable>
@@ -138,7 +148,10 @@ export const PipModal: React.FC<PipModalProps> = ({
                 return (
                   <Pressable
                     key={pos.label}
-                    style={[styles.presetBtn, isCurrent && styles.activePresetBtn]}
+                    style={[
+                      styles.presetBtn,
+                      isCurrent && styles.activePresetBtn,
+                    ]}
                     onPress={() => {
                       HapticsService.light();
                       onUpdatePip({ ...activePip, x: pos.x, y: pos.y });
@@ -187,7 +200,9 @@ export const PipModal: React.FC<PipModalProps> = ({
                 minimumValue={0.1}
                 maximumValue={1.0}
                 step={0.05}
-                onValueChange={val => onUpdatePip({ ...activePip, opacity: val })}
+                onValueChange={val =>
+                  onUpdatePip({ ...activePip, opacity: val })
+                }
               />
             </View>
 
@@ -204,7 +219,9 @@ export const PipModal: React.FC<PipModalProps> = ({
                 minimumValue={0}
                 maximumValue={1.0}
                 step={0.05}
-                onValueChange={val => onUpdatePip({ ...activePip, volume: val })}
+                onValueChange={val =>
+                  onUpdatePip({ ...activePip, volume: val })
+                }
               />
             </View>
 
@@ -225,7 +242,8 @@ export const PipModal: React.FC<PipModalProps> = ({
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
-              No PIP overlay yet. Tap "+ Add Overlay Video" to layer a secondary video or photo over your main clip.
+              No PIP overlay yet. Tap "+ Add Overlay Video" to layer a secondary
+              video or photo over your main clip.
             </Text>
           </View>
         )}

@@ -118,28 +118,40 @@ export const SpeedSelectorModal: React.FC<SpeedSelectorModalProps> = ({
         {/* Tab Toggle: Standard vs Curve */}
         <View style={styles.tabContainer}>
           <Pressable
-            style={[styles.tabButton, activeTab === 'standard' && styles.activeTabButton]}
+            style={[
+              styles.tabButton,
+              activeTab === 'standard' && styles.activeTabButton,
+            ]}
             onPress={() => {
               HapticsService.light();
               setActiveTab('standard');
             }}
           >
             <Text
-              style={[styles.tabButtonText, activeTab === 'standard' && styles.activeTabButtonText]}
+              style={[
+                styles.tabButtonText,
+                activeTab === 'standard' && styles.activeTabButtonText,
+              ]}
             >
               Standard
             </Text>
           </Pressable>
 
           <Pressable
-            style={[styles.tabButton, activeTab === 'curve' && styles.activeTabButton]}
+            style={[
+              styles.tabButton,
+              activeTab === 'curve' && styles.activeTabButton,
+            ]}
             onPress={() => {
               HapticsService.light();
               setActiveTab('curve');
             }}
           >
             <Text
-              style={[styles.tabButtonText, activeTab === 'curve' && styles.activeTabButtonText]}
+              style={[
+                styles.tabButtonText,
+                activeTab === 'curve' && styles.activeTabButtonText,
+              ]}
             >
               Speed Curve ⚡
             </Text>
@@ -149,12 +161,15 @@ export const SpeedSelectorModal: React.FC<SpeedSelectorModalProps> = ({
         {activeTab === 'standard' ? (
           <View>
             <Text style={styles.hint}>
-              Duration: {calculateEffective(currentSpeed)}s (Current: {currentSpeed}x)
+              Duration: {calculateEffective(currentSpeed)}s (Current:{' '}
+              {currentSpeed}x)
             </Text>
 
             <View style={styles.grid}>
               {SPEED_OPTIONS.map(speed => {
-                const isSelected = currentSpeed === speed && (!currentCurve || currentCurve.preset === 'none');
+                const isSelected =
+                  currentSpeed === speed &&
+                  (!currentCurve || currentCurve.preset === 'none');
                 return (
                   <Pressable
                     key={speed}
@@ -181,20 +196,27 @@ export const SpeedSelectorModal: React.FC<SpeedSelectorModalProps> = ({
             </View>
           </View>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false} style={styles.curveScroll}>
-            <Text style={styles.hint}>
-              Dynamic Speed Ramping Presets
-            </Text>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={styles.curveScroll}
+          >
+            <Text style={styles.hint}>Dynamic Speed Ramping Presets</Text>
 
             {CURVE_DEFINITIONS.map(c => {
               const isSelected = selectedCurvePreset === c.preset;
-              const curveObj: SpeedCurve = { preset: c.preset, points: c.points };
+              const curveObj: SpeedCurve = {
+                preset: c.preset,
+                points: c.points,
+              };
               const effDuration = calculateCurveEffective(curveObj);
 
               return (
                 <Pressable
                   key={c.preset}
-                  style={[styles.curveCard, isSelected && styles.selectedCurveCard]}
+                  style={[
+                    styles.curveCard,
+                    isSelected && styles.selectedCurveCard,
+                  ]}
                   onPress={() => {
                     HapticsService.medium();
                     if (onSelectCurve) {
@@ -204,12 +226,22 @@ export const SpeedSelectorModal: React.FC<SpeedSelectorModalProps> = ({
                 >
                   <View style={styles.curveHeader}>
                     <View>
-                      <Text style={[styles.curveName, isSelected && styles.selectedCurveText]}>
+                      <Text
+                        style={[
+                          styles.curveName,
+                          isSelected && styles.selectedCurveText,
+                        ]}
+                      >
                         {c.name}
                       </Text>
                       <Text style={styles.curveDesc}>{c.description}</Text>
                     </View>
-                    <Text style={[styles.curveDuration, isSelected && styles.selectedDuration]}>
+                    <Text
+                      style={[
+                        styles.curveDuration,
+                        isSelected && styles.selectedDuration,
+                      ]}
+                    >
                       ~{effDuration}s
                     </Text>
                   </View>
@@ -218,14 +250,19 @@ export const SpeedSelectorModal: React.FC<SpeedSelectorModalProps> = ({
                   <View style={styles.waveformContainer}>
                     {c.points.map((pt, idx) => {
                       // Normalize bar height based on speed (0.2x to 3.0x -> 10% to 100%)
-                      const heightPct = Math.min(100, Math.max(15, (pt.speed / 3.0) * 100));
+                      const heightPct = Math.min(
+                        100,
+                        Math.max(15, (pt.speed / 3.0) * 100),
+                      );
                       return (
                         <View key={idx} style={styles.barColumn}>
                           <View
                             style={[
                               styles.bar,
                               { height: `${heightPct}%` },
-                              isSelected ? styles.activeBar : styles.inactiveBar,
+                              isSelected
+                                ? styles.activeBar
+                                : styles.inactiveBar,
                             ]}
                           />
                           <Text style={styles.barLabel}>{pt.speed}x</Text>

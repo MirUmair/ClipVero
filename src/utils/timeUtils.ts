@@ -4,7 +4,12 @@ import { MediaClip, SpeedCurve } from '../types/project';
  * Calculates average speed from a speed curve
  */
 export function calculateCurveAverageSpeed(curve?: SpeedCurve): number {
-  if (!curve || !curve.points || curve.points.length === 0 || curve.preset === 'none') {
+  if (
+    !curve ||
+    !curve.points ||
+    curve.points.length === 0 ||
+    curve.preset === 'none'
+  ) {
     return 1.0;
   }
   const sum = curve.points.reduce((acc, p) => acc + p.speed, 0);
