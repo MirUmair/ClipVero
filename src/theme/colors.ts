@@ -1,30 +1,36 @@
 /**
- * Clipvero Theme - Colors
- * Sleek, modern, dark UI video editor identity
+ * EditMate Theme - Colors
+ * Vibrant futuristic dark UI: Electric Cyan, Neon Violet/Purple, Vivid Magenta & Deep Obsidian
  */
 
 export const colors = {
   // Brand & Accents
-  primary: '#7C3AED', // Vibrant violet
-  primaryLight: '#8B5CF6',
+  primary: '#8B5CF6', // Vibrant EditMate Purple/Violet
+  primaryLight: '#A855F7',
   primaryDark: '#6D28D9',
-  accent: '#06B6D4', // Modern cyan
-  accentPink: '#EC4899',
+  accent: '#00D2FF', // Electric Cyan
+  accentBlue: '#0078FF',
+  accentMagenta: '#D946EF', // Vivid Magenta
+  accentPink: '#EC4899', // Hot Pink
+
+  // Brand Gradients
+  brandGradient: ['#00D2FF', '#8B5CF6'],
+  buttonGradient: ['#00D2FF', '#D946EF'],
 
   // Dark Editing Workspace
-  background: '#0B0D13', // Deep obsidian
-  surface: '#141824', // Dark card / panel
-  surfaceElevated: '#1D2234', // Modals, toolbars, popups
-  surfaceHighlight: '#282F48', // Active / hover / borders
+  background: '#080B14', // Deep obsidian midnight
+  surface: '#0F1526', // Sleek card / panel
+  surfaceElevated: '#161F36', // Modals, toolbars, popups
+  surfaceHighlight: '#222C4A', // Active / hover / borders
 
   // Timeline Specific
-  timelineBg: '#0F121C',
-  timelineTrack: '#191E2E',
-  timelinePlayhead: '#EC4899', // Bright pink/magenta playhead
-  timelineSelection: '#7C3AED',
+  timelineBg: '#0B101E',
+  timelineTrack: '#141B30',
+  timelinePlayhead: '#00D2FF', // Electric Cyan playhead
+  timelineSelection: '#8B5CF6',
   timelineHandle: '#FFFFFF',
-  timelineAudioTrack: '#0EA5E9',
-  timelineTextTrack: '#F59E0B',
+  timelineAudioTrack: '#00D2FF',
+  timelineTextTrack: '#D946EF',
 
   // Text & Icons
   text: '#F8FAFC',
@@ -36,15 +42,15 @@ export const colors = {
   success: '#10B981',
   warning: '#F59E0B',
   error: '#EF4444',
-  info: '#3B82F6',
+  info: '#00D2FF',
 
   // Border & Dividers
-  border: '#23293D',
-  borderLight: '#333D5A',
+  border: '#1E2742',
+  borderLight: '#2C385C',
 
   // Overlays
-  overlay: 'rgba(0, 0, 0, 0.75)',
-  scrim: 'rgba(0, 0, 0, 0.45)',
+  overlay: 'rgba(5, 8, 16, 0.82)',
+  scrim: 'rgba(0, 0, 0, 0.55)',
   transparent: 'transparent',
 };
 

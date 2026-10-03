@@ -25,6 +25,7 @@ import { SharingService } from '../services/sharingService';
 import { HapticsService } from '../services/hapticsService';
 import { formatDuration } from '../utils/timeUtils';
 import { formatFileSize } from '../utils/fileUtils';
+import { BrandLogo } from '../components/common/BrandLogo';
 
 interface QuickToolItem {
   id: string;
@@ -180,20 +181,17 @@ export const HomeScreen: React.FC = () => {
     >
       {/* Top Header */}
       <View style={styles.topHeader}>
-        <View>
-          <Text style={styles.brandTitle}>Clipvero</Text>
-          <Text style={styles.brandTagline}>Create. Edit. Share.</Text>
-        </View>
+        <BrandLogo size="md" showTagline={true} />
         <IconButton
           name="sparkles"
           size={40}
           iconSize={20}
-          color={colors.primaryLight}
+          color={colors.accent}
           onPress={() => {
             HapticsService.light();
             Alert.alert(
-              'Clipvero',
-              'Modern offline on-device Reels and Shorts video editor.',
+              'EditMate',
+              'Powerful Video Editing Made Simple.\nCREATE · EDIT · SHARE',
             );
           }}
         />
@@ -211,7 +209,7 @@ export const HomeScreen: React.FC = () => {
             </View>
             <Text style={styles.newProjectTitle}>+ New Project</Text>
             <Text style={styles.newProjectSubtitle}>
-              Start editing Reels, Shorts, and clips
+              Powerful Video Editing Made Simple
             </Text>
           </Pressable>
         </View>

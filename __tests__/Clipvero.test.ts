@@ -360,7 +360,7 @@ describe('Clipvero Media & Timeline Engine', () => {
 
     it('generates sanitized export file names', () => {
       const filename = generateExportFileName('My Travel Vlog #1');
-      expect(filename).toMatch(/^Clipvero_My_Travel_Vlog__1_[0-9]+\.mp4$/);
+      expect(filename).toMatch(/^EditMate_My_Travel_Vlog__1_[0-9]+\.mp4$/);
     });
   });
 

@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
             <Text style={styles.title}>Something went wrong</Text>
             <Text style={styles.subtitle}>
-              Clipvero encountered an unexpected issue while rendering. Don't
+              EditMate encountered an unexpected issue while rendering. Don't
               worry, your source media files are safe and untouched.
             </Text>
 
