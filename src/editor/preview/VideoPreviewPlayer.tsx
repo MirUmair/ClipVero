@@ -8,6 +8,7 @@ import {
   ViewStyle,
   Dimensions,
   ActivityIndicator,
+  LayoutChangeEvent,
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { Project, MediaClip, TextLayer } from '../../types/project';
@@ -29,7 +30,7 @@ interface VideoPreviewPlayerProps {
   style?: ViewStyle;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   project,
@@ -41,8 +42,43 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   selectedTextLayerId,
   style,
 }) => {
-  const containerMaxHeight = 360;
-  const containerMaxWidth = SCREEN_WIDTH - 24;
+  const [measuredSize, setMeasuredSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const handleLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width > 0 && height > 0) {
+      setMeasuredSize(prev => {
+        if (
+          prev &&
+          Math.abs(prev.width - width) < 1 &&
+          Math.abs(prev.height - height) < 1
+        ) {
+          return prev;
+        }
+        return { width, height };
+      });
+    }
+  };
+
+  // Generous, screen-aware fallback if layout has not yet fired
+  const fallbackMaxWidth = Math.max(300, SCREEN_WIDTH - 20);
+  const fallbackMaxHeight = Math.max(
+    380,
+    Math.min(
+      Math.round(SCREEN_HEIGHT - 330),
+      Math.round(SCREEN_HEIGHT * 0.52),
+    ),
+  );
+
+  const containerMaxWidth = measuredSize
+    ? Math.max(100, Math.floor(measuredSize.width - 16))
+    : fallbackMaxWidth;
+  const containerMaxHeight = measuredSize
+    ? Math.max(100, Math.floor(measuredSize.height - 16))
+    : fallbackMaxHeight;
 
   const safeClips = project?.clips || [];
   const safeTextLayers = project?.textLayers || [];
@@ -172,12 +208,15 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   );
 
   return (
-    <View style={[styles.wrapper, style]}>
+    <View style={[styles.wrapper, style]} onLayout={handleLayout}>
       <Pressable
         onPress={onTogglePlay}
         style={[
           styles.canvasContainer,
-          { width: previewBounds.width, height: previewBounds.height },
+          {
+            width: Math.round(previewBounds.width),
+            height: Math.round(previewBounds.height),
+          },
         ]}
       >
         {/* Blur Canvas Background */}
@@ -384,9 +423,10 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
 
 const styles = StyleSheet.create({
   wrapper: {
+    flex: 1,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
     backgroundColor: colors.background,
   },
   canvasContainer: {
