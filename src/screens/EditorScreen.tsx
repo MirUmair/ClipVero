@@ -264,8 +264,9 @@ export const EditorScreen: React.FC = () => {
     activeAudioTrack?.isMuted,
   ]);
 
-  // Clean up native audio players on unmount
+  // Enable immersive mode (hide phone navigation buttons) and clean up native audio players on unmount
   useEffect(() => {
+    MediaEngine.setImmersiveMode(true);
     return () => {
       MediaEngine.stopPreviewAudio();
     };

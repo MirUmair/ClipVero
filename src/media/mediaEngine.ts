@@ -507,4 +507,18 @@ export class MediaEngine {
     }
     return [];
   }
+
+  /**
+   * Hide or show Android system navigation bar phone buttons (immersive mode)
+   */
+  public static async setImmersiveMode(enabled: boolean = true): Promise<boolean> {
+    if (ClipveroMediaEngine?.setImmersiveMode) {
+      try {
+        return await ClipveroMediaEngine.setImmersiveMode(enabled);
+      } catch (e) {
+        console.warn('Failed to set immersive mode:', e);
+      }
+    }
+    return false;
+  }
 }

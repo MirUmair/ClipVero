@@ -17,8 +17,11 @@ import android.os.Build
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.provider.OpenableColumns
+import android.util.Log
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
@@ -1507,6 +1510,53 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 promise.resolve(results)
             } catch (e: Exception) {
                 promise.reject("SFX_ERROR", "Failed to load SFX: ${e.message}", e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun setImmersiveMode(enabled: Boolean, promise: Promise) {
+        mainHandler.post {
+            try {
+                val activity = reactContext.currentActivity
+                if (activity is MainActivity) {
+                    if (enabled) {
+                        activity.hideNavigationButtons()
+                    } else {
+                        activity.showNavigationButtons()
+                    }
+                    promise.resolve(true)
+                } else if (activity != null) {
+                    if (enabled) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            activity.window.insetsController?.let { controller ->
+                                controller.hide(WindowInsets.Type.navigationBars())
+                                controller.systemBarsBehavior =
+                                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            activity.window.decorView.systemUiVisibility = (
+                                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            )
+                        }
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            activity.window.insetsController?.show(WindowInsets.Type.navigationBars())
+                        } else {
+                            @Suppress("DEPRECATION")
+                            activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                        }
+                    }
+                    promise.resolve(true)
+                } else {
+                    promise.resolve(false)
+                }
+            } catch (e: Exception) {
+                promise.resolve(false)
             }
         }
     }
