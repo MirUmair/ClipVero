@@ -6,9 +6,9 @@ import {
   ScrollView,
   Image,
   Pressable,
-  Alert,
   TextInput,
 } from 'react-native';
+import { ThemedAlert as Alert } from '../services/alertService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { spacing, borderRadius } from '../theme/spacing';

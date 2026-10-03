@@ -5,10 +5,10 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
   PermissionsAndroid,
   Platform,
 } from 'react-native';
+import { ThemedAlert as Alert } from '../../services/alertService';
 import { colors } from '../../theme/colors';
 import { spacing, borderRadius } from '../../theme/spacing';
 import { typography } from '../../theme/typography';

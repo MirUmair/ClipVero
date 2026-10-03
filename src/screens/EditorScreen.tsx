@@ -5,7 +5,8 @@ import React, {
   useRef,
   useCallback,
 } from 'react';
-import { View, StyleSheet, Alert, TextInput } from 'react-native';
+import { View, StyleSheet, TextInput } from 'react-native';
+import { ThemedAlert as Alert } from '../services/alertService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { Header } from '../components/common/Header';
