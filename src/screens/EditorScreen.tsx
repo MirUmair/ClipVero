@@ -41,6 +41,7 @@ import { TextEditorModal } from '../editor/text/TextEditorModal';
 import { AudioModal } from '../editor/audio/AudioModal';
 import { StickersModal } from '../editor/overlays/StickersModal';
 import { PipModal } from '../editor/pip/PipModal';
+import { TrimModal } from '../editor/trim/TrimModal';
 import {
   calculateEffectiveClipDuration,
   calculateProjectTotalDuration,
@@ -54,6 +55,7 @@ import { MediaEngine } from '../media/mediaEngine';
 export const EditorScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useAppNavigation();
+  const isTrimQuickTool = navigation.params?.quickToolMode === 'trim';
 
   // Initial project state from navigation params
   const [project, setProject] = useState<Project>(() => {
@@ -89,10 +91,11 @@ export const EditorScreen: React.FC = () => {
 
   // Active toolbar category
   const [activeCategory, setActiveCategory] = useState<MainCategory | null>(
-    null,
+    isTrimQuickTool ? 'edit' : null,
   );
 
   // Modals state
+  const [trimModalVisible, setTrimModalVisible] = useState(isTrimQuickTool);
   const [speedModalVisible, setSpeedModalVisible] = useState(false);
   const [volumeModalVisible, setVolumeModalVisible] = useState(false);
   const [ratioModalVisible, setRatioModalVisible] = useState(false);
@@ -662,6 +665,9 @@ export const EditorScreen: React.FC = () => {
 
   const handleEditAction = (action: EditSubAction) => {
     switch (action) {
+      case 'trim':
+        setTrimModalVisible(true);
+        break;
       case 'split':
         handleSplitClip();
         break;
@@ -944,6 +950,20 @@ export const EditorScreen: React.FC = () => {
       />
 
       {/* Modals */}
+      <TrimModal
+        visible={trimModalVisible}
+        onClose={() => setTrimModalVisible(false)}
+        clipName={selectedClip?.name || 'Selected Video'}
+        originalDuration={selectedClip?.originalDuration || 10}
+        trimStart={selectedClip?.trimStart || 0}
+        trimEnd={selectedClip?.trimEnd || selectedClip?.originalDuration || 10}
+        onApplyTrim={(newStart, newEnd) => {
+          if (selectedClip) {
+            handleTrimClip(selectedClip.id, newStart, newEnd);
+          }
+        }}
+      />
+
       <TransitionModal
         visible={transitionModalVisible}
         onClose={() => setTransitionModalVisible(false)}

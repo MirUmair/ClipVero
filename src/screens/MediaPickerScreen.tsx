@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -227,8 +227,11 @@ export const MediaPickerScreen: React.FC = () => {
       thumbnailUri: selectedClips[0]?.thumbnailUri || selectedClips[0]?.uri,
     };
 
-    navigation.navigate('Editor', { project: newProject });
+    const quickToolMode = navigation.params?.quickToolMode;
+    navigation.navigate('Editor', { project: newProject, quickToolMode });
   };
+
+  const quickToolMode = navigation.params?.quickToolMode;
 
   return (
     <View
@@ -238,8 +241,14 @@ export const MediaPickerScreen: React.FC = () => {
       ]}
     >
       <Header
-        title="Select Media"
-        subtitle={`${selectedClips.length} items selected`}
+        title={quickToolMode === 'trim' ? 'Trim Video' : 'Select Media'}
+        subtitle={
+          selectedClips.length > 0
+            ? `${selectedClips.length} items selected`
+            : quickToolMode === 'trim'
+            ? 'Select a video to trim'
+            : 'Pick footage to edit'
+        }
         onBack={() => navigation.goBack()}
       />
 

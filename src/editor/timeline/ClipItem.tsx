@@ -36,9 +36,10 @@ export const ClipItem: React.FC<ClipItemProps> = ({
   trimStartRef.current = clip.trimStart;
   trimEndRef.current = clip.trimEnd;
 
+  const numThumbs = Math.max(4, Math.min(10, Math.ceil(clipWidth / 48)));
+
   useEffect(() => {
     let isMounted = true;
-    const numThumbs = Math.max(4, Math.min(10, Math.ceil(clipWidth / 48)));
     ThumbnailCache.getTimelineThumbnails(clip.id, clip.uri, numThumbs).then(
       thumbs => {
         if (isMounted) setThumbnails(thumbs);
@@ -47,7 +48,7 @@ export const ClipItem: React.FC<ClipItemProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [clip.id, clip.uri, clipWidth]);
+  }, [clip.id, clip.uri, numThumbs]);
 
   // Start Trim Handle PanResponder
   const startPanResponder = useRef(

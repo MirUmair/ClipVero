@@ -86,6 +86,7 @@ const EDIT_ACTIONS: Array<{
   icon: IconName;
   danger?: boolean;
 }> = [
+  { id: 'trim', label: 'Trim', icon: 'scissors' },
   { id: 'split', label: 'Split', icon: 'scissors' },
   { id: 'transition', label: 'Transition', icon: 'layers' },
   { id: 'speed', label: 'Speed', icon: 'speed' },
