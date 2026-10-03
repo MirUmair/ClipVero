@@ -167,17 +167,17 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
           <Text style={styles.slogan}>
             Powerful Video Editing Made Simple
           </Text>
-        </Animated.View>
-      </View>
 
-      {/* Bottom Loading Progress Track */}
-      <View style={styles.bottomSection}>
-        <View style={styles.progressTrack}>
-          <Animated.View
-            style={[styles.progressBar, { width: progressWidth }]}
-          />
-        </View>
-        <Text style={styles.versionText}>ClipVero v1.0 · Fast & Offline</Text>
+          {/* Full Screen Centered Loader */}
+          <View style={styles.loaderContainer}>
+            <View style={styles.progressTrack}>
+              <Animated.View
+                style={[styles.progressBar, { width: progressWidth }]}
+              />
+            </View>
+            <Text style={styles.versionText}>ClipVero Studio · Fast & Offline</Text>
+          </View>
+        </Animated.View>
       </View>
     </Animated.View>
   );
@@ -185,11 +185,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#080B14',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 9999,
   },
   glowOrbTop: {
     position: 'absolute',
@@ -198,7 +199,6 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: 140,
     backgroundColor: 'rgba(139, 92, 246, 0.12)', // Subtle Violet glow
-    filter: 'blur(60px)',
   },
   glowOrbBottom: {
     position: 'absolute',
@@ -207,7 +207,6 @@ const styles = StyleSheet.create({
     height: 240,
     borderRadius: 120,
     backgroundColor: 'rgba(0, 210, 255, 0.08)', // Subtle Cyan glow
-    filter: 'blur(50px)',
   },
   centerContent: {
     alignItems: 'center',
@@ -257,30 +256,28 @@ const styles = StyleSheet.create({
     marginTop: 10,
     letterSpacing: 0.3,
   },
-  bottomSection: {
-    position: 'absolute',
-    bottom: 48,
+  loaderContainer: {
     alignItems: 'center',
+    marginTop: 32,
     width: '100%',
-    paddingHorizontal: 48,
   },
   progressTrack: {
-    width: 160,
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 2,
+    width: 180,
+    height: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 3,
     overflow: 'hidden',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   progressBar: {
     height: '100%',
     backgroundColor: colors.accent,
-    borderRadius: 2,
+    borderRadius: 3,
   },
   versionText: {
     fontSize: 11,
     fontWeight: '600',
     color: '#64748B',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
 });

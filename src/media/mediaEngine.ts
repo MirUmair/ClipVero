@@ -269,6 +269,7 @@ export class MediaEngine {
       if (ClipveroMediaEngine?.exportProject) {
         const configJson = JSON.stringify({
           name: project.name,
+          aspectRatio: project.aspectRatio || '9:16',
           clips: project.clips.map(c => ({
             uri: c.uri,
             trimStart: c.trimStart,
@@ -278,6 +279,13 @@ export class MediaEngine {
             isMuted: c.isMuted,
             rotation: c.rotation,
             transition: c.transition,
+          })),
+          audioTracks: (project.audioTracks || []).map(a => ({
+            uri: a.uri,
+            trimStart: a.trimStart,
+            trimEnd: a.trimEnd,
+            volume: a.volume,
+            isMuted: a.isMuted,
           })),
           exportSettings: project.exportSettings,
         });

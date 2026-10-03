@@ -24,9 +24,10 @@ function App() {
       <StatusBar barStyle="light-content" backgroundColor="#080B14" translucent />
       <View style={styles.container}>
         <ErrorBoundary>
-          <AppNavigator />
-          {isSplashVisible && (
+          {isSplashVisible ? (
             <SplashScreen onFinish={() => setIsSplashVisible(false)} />
+          ) : (
+            <AppNavigator />
           )}
           <ThemedAlertModal />
         </ErrorBoundary>

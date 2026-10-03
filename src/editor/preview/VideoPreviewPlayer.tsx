@@ -11,13 +11,14 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { colors } from '../../theme/colors';
-import { Project, MediaClip, TextLayer } from '../../types/project';
+import { Project, MediaClip, TextLayer, StickerLayer } from '../../types/project';
 import { calculateCanvasPreviewBounds } from '../canvas/canvasUtils';
 import { FILTER_PRESETS } from '../filters/filterPresets';
 import { findClipAtTimelineTime } from '../../utils/timeUtils';
 import { ThumbnailCache } from '../../media/thumbnailCache';
 import { MediaEngine } from '../../media/mediaEngine';
 import { NativeVideoView } from '../../components/common/NativeVideoView';
+import { DraggableSticker } from './DraggableSticker';
 
 interface VideoPreviewPlayerProps {
   project: Project;
@@ -27,6 +28,10 @@ interface VideoPreviewPlayerProps {
   onTogglePlay: () => void;
   onSelectTextLayer?: (layer: TextLayer) => void;
   selectedTextLayerId?: string | null;
+  selectedStickerId?: string | null;
+  onSelectSticker?: (stickerId: string | null) => void;
+  onUpdateSticker?: (sticker: StickerLayer) => void;
+  onDeleteSticker?: (stickerId: string) => void;
   style?: ViewStyle;
 }
 
@@ -40,6 +45,10 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   onTogglePlay,
   onSelectTextLayer,
   selectedTextLayerId,
+  selectedStickerId,
+  onSelectSticker,
+  onUpdateSticker,
+  onDeleteSticker,
   style,
 }) => {
   const [measuredSize, setMeasuredSize] = useState<{
@@ -210,7 +219,13 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   return (
     <View style={[styles.wrapper, style]} onLayout={handleLayout}>
       <Pressable
-        onPress={onTogglePlay}
+        onPress={() => {
+          if (selectedStickerId) {
+            onSelectSticker?.(null);
+          } else {
+            onTogglePlay();
+          }
+        }}
         style={[
           styles.canvasContainer,
           {
@@ -354,33 +369,18 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
           );
         })}
 
-        {/* Sticker Layers Overlay */}
+        {/* Draggable Sticker Layers Overlay */}
         {visibleStickerLayers.map(sticker => (
-          <View
+          <DraggableSticker
             key={sticker.id}
-            style={[
-              styles.stickerLayerWrapper,
-              {
-                left: `${sticker.x * 100}%`,
-                top: `${sticker.y * 100}%`,
-                transform: [
-                  { translateX: -20 },
-                  { translateY: -20 },
-                  { scale: sticker.scale },
-                  { rotate: `${sticker.rotation}deg` },
-                ],
-              },
-            ]}
-          >
-            {sticker.emoji ? (
-              <Text style={styles.stickerEmoji}>{sticker.emoji}</Text>
-            ) : sticker.uri ? (
-              <Image
-                source={{ uri: sticker.uri }}
-                style={styles.stickerImage}
-              />
-            ) : null}
-          </View>
+            sticker={sticker}
+            isSelected={selectedStickerId === sticker.id}
+            previewWidth={previewBounds.width}
+            previewHeight={previewBounds.height}
+            onSelect={() => onSelectSticker?.(sticker.id)}
+            onUpdate={updated => onUpdateSticker?.(updated)}
+            onDelete={() => onDeleteSticker?.(sticker.id)}
+          />
         ))}
 
         {/* Picture-in-Picture (PIP) Overlays */}

@@ -825,15 +825,28 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 if (!exportDir.exists()) exportDir.mkdirs()
 
                 val resolution = exportSettings?.optString("resolution", "1080p") ?: "1080p"
-                val outHeight = when (resolution) {
-                    "720p" -> 1280
-                    "480p" -> 854
-                    else -> 1920
-                }
-                val outWidth = when (resolution) {
-                    "720p" -> 720
-                    "480p" -> 480
-                    else -> 1080
+                val ratio = projectObj.optString("aspectRatio", "9:16")
+                val (outWidth, outHeight) = when (ratio) {
+                    "16:9" -> when (resolution) {
+                        "720p" -> Pair(1280, 720)
+                        "480p" -> Pair(854, 480)
+                        else -> Pair(1920, 1080)
+                    }
+                    "1:1" -> when (resolution) {
+                        "720p" -> Pair(720, 720)
+                        "480p" -> Pair(480, 480)
+                        else -> Pair(1080, 1080)
+                    }
+                    "4:5" -> when (resolution) {
+                        "720p" -> Pair(720, 900)
+                        "480p" -> Pair(480, 600)
+                        else -> Pair(1080, 1350)
+                    }
+                    else -> when (resolution) {
+                        "720p" -> Pair(720, 1280)
+                        "480p" -> Pair(480, 854)
+                        else -> Pair(1080, 1920)
+                    }
                 }
 
                 val outputFile = File(exportDir, "${projectName}_${System.currentTimeMillis()}.mp4")
@@ -904,17 +917,58 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     editedMediaItems.add(editedItemBuilder.build())
                 }
 
-                val sequence = EditedMediaItemSequence(editedMediaItems)
-                val composition = Composition.Builder(listOf(sequence)).build()
+                val hasAnyClipAudio = editedMediaItems.any { !it.removeAudio }
+                val videoSequence = EditedMediaItemSequence(editedMediaItems)
+                val sequences = ArrayList<EditedMediaItemSequence>()
+                sequences.add(videoSequence)
 
-                val hasAnyAudio = editedMediaItems.any { !it.removeAudio }
+                val audioTracksArray = projectObj.optJSONArray("audioTracks")
+                var hasExtraAudio = false
+                if (audioTracksArray != null && audioTracksArray.length() > 0) {
+                    for (j in 0 until audioTracksArray.length()) {
+                        val trackObj = audioTracksArray.getJSONObject(j)
+                        val isMuted = trackObj.optBoolean("isMuted", false)
+                        val vol = trackObj.optDouble("volume", 1.0)
+                        if (isMuted || vol == 0.0) continue
+                        val uriStr = trackObj.optString("uri", "")
+                        if (uriStr.isEmpty()) continue
+                        try {
+                            val audioUri = ensureLocalUri(uriStr)
+                            val audioItemBuilder = MediaItem.Builder().setUri(audioUri)
+                            val trimStart = trackObj.optDouble("trimStart", 0.0)
+                            val trimEnd = trackObj.optDouble("trimEnd", -1.0)
+                            if (trimStart > 0 || trimEnd > 0) {
+                                val clippingConfig = MediaItem.ClippingConfiguration.Builder()
+                                    .setStartPositionMs((trimStart * 1000).toLong())
+                                if (trimEnd > trimStart) {
+                                    clippingConfig.setEndPositionMs((trimEnd * 1000).toLong())
+                                }
+                                audioItemBuilder.setClippingConfiguration(clippingConfig.build())
+                            }
+                            val editedAudio = EditedMediaItem.Builder(audioItemBuilder.build())
+                                .setRemoveVideo(true)
+                                .build()
+                            sequences.add(EditedMediaItemSequence(listOf(editedAudio)))
+                            hasExtraAudio = true
+                        } catch (e: Exception) {
+                            Log.w("ClipveroMediaEngine", "Could not include audio track: ${e.message}")
+                        }
+                    }
+                }
+
+                val totalHasAudio = hasAnyClipAudio || hasExtraAudio
+                val composition = Composition.Builder(sequences)
+                    // Media3 aborts if audio first appears after a silent/muted clip
+                    // or image. Generate silence for those gaps when audio is enabled.
+                    .experimentalSetForceAudioTrack(totalHasAudio)
+                    .build()
 
                 mainHandler.post {
                     try {
                         val requestBuilder = TransformationRequest.Builder()
                             .setVideoMimeType(MimeTypes.VIDEO_H264)
 
-                        if (hasAnyAudio) {
+                        if (totalHasAudio) {
                             requestBuilder.setAudioMimeType(MimeTypes.AUDIO_AAC)
                         }
 
@@ -1571,4 +1625,3 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         } catch (_: Exception) {}
     }
 }
-

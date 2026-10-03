@@ -16,6 +16,7 @@ import {
   Project,
   MediaClip,
   TextLayer,
+  StickerLayer,
   AudioTrack,
   ClipTransition,
   PipLayer,
@@ -40,6 +41,7 @@ import { FilterSelectorModal } from '../editor/filters/FilterSelectorModal';
 import { AdjustmentModal } from '../editor/adjustments/AdjustmentModal';
 import { TextEditorModal } from '../editor/text/TextEditorModal';
 import { AudioModal } from '../editor/audio/AudioModal';
+import { AudioFadeModal } from '../editor/audio/AudioFadeModal';
 import { StickersModal } from '../editor/overlays/StickersModal';
 import { PipModal } from '../editor/pip/PipModal';
 import { TrimModal } from '../editor/trim/TrimModal';
@@ -157,6 +159,10 @@ export const EditorScreen: React.FC = () => {
   const [audioModalTab, setAudioModalTab] = useState<
     'music' | 'voiceover' | 'sfx'
   >('music');
+  const [fadeModalVisible, setFadeModalVisible] = useState(false);
+  const [fadeModalInitialMode, setFadeModalInitialMode] = useState<
+    'fadeIn' | 'fadeOut'
+  >('fadeIn');
   const [transitionModalVisible, setTransitionModalVisible] = useState(false);
   const [transitionTargetClipId, setTransitionTargetClipId] = useState<
     string | null
@@ -166,6 +172,9 @@ export const EditorScreen: React.FC = () => {
 
   // Selected layers
   const [selectedTextLayer, setSelectedTextLayer] = useState<TextLayer | null>(
+    null,
+  );
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(
     null,
   );
   const [selectedAudioTrack, setSelectedAudioTrack] =
@@ -791,9 +800,32 @@ export const EditorScreen: React.FC = () => {
         break;
       case 'fadeIn':
       case 'fadeOut':
-        setSelectedAudioTrack(project.audioTracks[0] || null);
-        setAudioModalTab('music');
-        setAudioModalVisible(true);
+        if (project.audioTracks.length === 0) {
+          Alert.alert(
+            'No Audio Track Found',
+            'Fade In and Fade Out effects apply to audio tracks (music, sound effects, or voiceover). Add an audio track or extract audio from the video clip first.',
+            [
+              {
+                text: 'Add Music',
+                onPress: () => {
+                  setSelectedAudioTrack(null);
+                  setAudioModalTab('music');
+                  setAudioModalVisible(true);
+                },
+              },
+              {
+                text: 'Extract Clip Audio',
+                onPress: () => {
+                  handleExtractAudio();
+                },
+              },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+        } else {
+          setFadeModalInitialMode(action);
+          setFadeModalVisible(true);
+        }
         break;
     }
   };
@@ -877,7 +909,7 @@ export const EditorScreen: React.FC = () => {
 
   const handleAddEmojiSticker = (emoji: string) => {
     HapticsService.light();
-    const newSticker = {
+    const newSticker: StickerLayer = {
       id: `sticker_${Date.now()}`,
       emoji,
       startTime: currentTime,
@@ -887,9 +919,37 @@ export const EditorScreen: React.FC = () => {
       scale: 1,
       rotation: 0,
     };
+    setSelectedStickerId(newSticker.id);
     updateProject({
       ...project,
       stickerLayers: [...project.stickerLayers, newSticker],
+    });
+  };
+
+  const handleUpdateSticker = (updatedSticker: StickerLayer) => {
+    const updated = (project.stickerLayers || []).map(s =>
+      s.id === updatedSticker.id ? updatedSticker : s,
+    );
+    updateProject({ ...project, stickerLayers: updated }, false);
+  };
+
+  const handleDeleteSticker = (stickerId: string) => {
+    HapticsService.medium();
+    const updated = (project.stickerLayers || []).filter(s => s.id !== stickerId);
+    updateProject({ ...project, stickerLayers: updated });
+    if (selectedStickerId === stickerId) {
+      setSelectedStickerId(null);
+    }
+  };
+
+  const handleUpdateAudioTrack = (track: AudioTrack) => {
+    const updated = project.audioTracks.map(t =>
+      t.id === track.id ? track : t,
+    );
+    updateProject({ ...project, audioTracks: updated });
+    MediaEngine.setPreviewAudioVolume({
+      trackVolume: track.volume,
+      trackMuted: track.isMuted,
     });
   };
 
@@ -955,6 +1015,10 @@ export const EditorScreen: React.FC = () => {
             setTextModalVisible(true);
           }}
           selectedTextLayerId={selectedTextLayer?.id}
+          selectedStickerId={selectedStickerId}
+          onSelectSticker={setSelectedStickerId}
+          onUpdateSticker={handleUpdateSticker}
+          onDeleteSticker={handleDeleteSticker}
         />
       </View>
 
@@ -1240,6 +1304,15 @@ export const EditorScreen: React.FC = () => {
             );
           }
         }}
+      />
+
+      <AudioFadeModal
+        visible={fadeModalVisible}
+        onClose={() => setFadeModalVisible(false)}
+        tracks={project.audioTracks}
+        selectedTrackId={selectedAudioTrack?.id}
+        initialMode={fadeModalInitialMode}
+        onUpdateTrack={handleUpdateAudioTrack}
       />
 
       <StickersModal
