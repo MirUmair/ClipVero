@@ -1,11 +1,11 @@
 /**
- * EditMate Theme - Colors
+ * ClipVero Theme - Colors
  * Vibrant futuristic dark UI: Electric Cyan, Neon Violet/Purple, Vivid Magenta & Deep Obsidian
  */
 
 export const colors = {
   // Brand & Accents
-  primary: '#8B5CF6', // Vibrant EditMate Purple/Violet
+  primary: '#8B5CF6', // Vibrant ClipVero Purple/Violet
   primaryLight: '#A855F7',
   primaryDark: '#6D28D9',
   accent: '#00D2FF', // Electric Cyan

@@ -190,7 +190,7 @@ export const HomeScreen: React.FC = () => {
           onPress={() => {
             HapticsService.light();
             Alert.alert(
-              'EditMate',
+              'ClipVero',
               'Powerful Video Editing Made Simple.\nCREATE · EDIT · SHARE',
             );
           }}

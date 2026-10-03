@@ -20,7 +20,7 @@ export const PRO_FEATURES: Record<string, ProFeatureConfig> = {
     name: 'Cinematic Color Grading Presets',
     isProOnly: false,
   },
-  noWatermark: { id: 'noWatermark', name: 'Watermark Free', isProOnly: false }, // EditMate is 100% watermark free!
+  noWatermark: { id: 'noWatermark', name: 'Watermark Free', isProOnly: false }, // ClipVero is 100% watermark free!
   adFree: { id: 'adFree', name: 'Ad-Free Experience', isProOnly: true },
 };
 

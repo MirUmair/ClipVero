@@ -244,7 +244,7 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
           </View>
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>EditMate Editor</Text>
+            <Text style={styles.emptyTitle}>ClipVero Editor</Text>
             <Text style={styles.emptySubtitle}>No clips in timeline</Text>
           </View>
         )}

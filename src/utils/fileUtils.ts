@@ -21,7 +21,7 @@ export function generateExportFileName(
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 30);
   const timestamp = Date.now().toString().slice(-6);
-  return `EditMate_${sanitized || 'Video'}_${timestamp}.${extension}`;
+  return `ClipVero_${sanitized || 'Video'}_${timestamp}.${extension}`;
 }
 
 export function getFileName(uri: string): string {

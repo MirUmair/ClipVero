@@ -93,7 +93,7 @@ export const AudioModal: React.FC<AudioModalProps> = ({
           {
             title: 'Microphone Permission',
             message:
-              'EditMate needs access to your microphone to record voiceover audio tracks.',
+              'ClipVero needs access to your microphone to record voiceover audio tracks.',
             buttonPositive: 'Allow',
             buttonNegative: 'Deny',
           },
@@ -113,7 +113,7 @@ export const AudioModal: React.FC<AudioModalProps> = ({
       if (!hasPermission) {
         Alert.alert(
           'Microphone Permission Required',
-          'Please enable microphone access for EditMate in your device settings to record voiceovers.',
+          'Please enable microphone access for ClipVero in your device settings to record voiceovers.',
         );
         return;
       }

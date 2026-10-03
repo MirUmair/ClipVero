@@ -30,7 +30,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
         />
         <View style={styles.textColumn}>
           <Text style={[styles.brandTitle, { fontSize: titleFontSize }]}>
-            Edit<Text style={styles.brandTitleAccent}>Mate</Text>
+            Clip<Text style={styles.brandTitleAccent}>Vero</Text>
           </Text>
           {showTagline && (
             <Text style={[styles.brandTagline, { fontSize: taglineFontSize }]}>

@@ -20,11 +20,11 @@ export class SharingService {
 
       const shareMessage =
         Platform.OS === 'android'
-          ? `${title || 'EditMate Video'}\n${shareUrl}`
-          : title || 'Check out my video created with EditMate!';
+          ? `${title || 'ClipVero Video'}\n${shareUrl}`
+          : title || 'Check out my video created with ClipVero!';
 
       const result = await Share.share({
-        title: title || 'EditMate Video',
+        title: title || 'ClipVero Video',
         message: shareMessage,
         url: shareUrl,
       });
@@ -41,14 +41,14 @@ export class SharingService {
    */
   public static async shareText(
     message: string,
-    title: string = 'EditMate',
+    title: string = 'ClipVero',
   ): Promise<boolean> {
     try {
       const safeMessage =
         message?.trim() ||
-        'Check out EditMate - Powerful Video Editing Made Simple';
+        'Check out ClipVero - Powerful Video Editing Made Simple';
       const result = await Share.share({
-        title: title || 'EditMate',
+        title: title || 'ClipVero',
         message: safeMessage,
       });
       return result.action === Share.sharedAction;
