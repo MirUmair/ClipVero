@@ -84,11 +84,58 @@ export const EditorScreen: React.FC = () => {
     };
   });
 
-  const [currentTime, setCurrentTime] = useState<number>(0);
+  // Helper to calculate start time of any clip on timeline
+  const getClipStartTime = (
+    clips: MediaClip[],
+    targetClipId: string,
+  ): number => {
+    let start = 0;
+    for (const c of clips) {
+      if (c.id === targetClipId) return start;
+      const dur = (c.trimEnd - c.trimStart) / (c.speed || 1.0);
+      start += dur;
+    }
+    return start;
+  };
+
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(() => {
+    if (navigation.params?.addedClipsCount && project.clips.length > 0) {
+      return project.clips[project.clips.length - 1].id;
+    }
+    return project.clips[0]?.id || null;
+  });
+
+  const [currentTime, setCurrentTime] = useState<number>(() => {
+    if (navigation.params?.addedClipsCount && project.clips.length > 0) {
+      const target = project.clips[project.clips.length - 1];
+      return Number(getClipStartTime(project.clips, target.id).toFixed(2));
+    }
+    return 0;
+  });
+
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(
-    project.clips[0]?.id || null,
-  );
+
+  // Synchronize when returning from MediaPicker with appended clips
+  useEffect(() => {
+    if (navigation.params?.project) {
+      const incoming = navigation.params.project;
+      if (
+        incoming.id !== project.id ||
+        incoming.updatedAt !== project.updatedAt ||
+        incoming.clips.length !== project.clips.length
+      ) {
+        setProject(incoming);
+        setHistory(prev => [...prev, incoming]);
+        setHistoryIndex(prev => prev + 1);
+        if (incoming.clips.length > project.clips.length) {
+          const addedClip = incoming.clips[incoming.clips.length - 1];
+          setSelectedClipId(addedClip.id);
+          const start = getClipStartTime(incoming.clips, addedClip.id);
+          setCurrentTime(Number(start.toFixed(2)));
+        }
+      }
+    }
+  }, [navigation.params?.project]);
 
   // Active toolbar category
   const [activeCategory, setActiveCategory] = useState<MainCategory | null>(
@@ -666,8 +713,20 @@ export const EditorScreen: React.FC = () => {
 
   // --- SUBTOOL ACTION DISPATCHER ---
 
+  const handleAddMedia = () => {
+    HapticsService.light();
+    AutosaveManager.flush();
+    navigation.navigate('MediaPicker', {
+      project,
+      mode: 'append',
+    });
+  };
+
   const handleEditAction = (action: EditSubAction) => {
     switch (action) {
+      case 'addMedia':
+        handleAddMedia();
+        break;
       case 'trim':
         setTrimModalVisible(true);
         break;
@@ -923,7 +982,7 @@ export const EditorScreen: React.FC = () => {
         onSelectClip={clip => setSelectedClipId(clip.id)}
         onSeek={handleSeek}
         onTrimClip={handleTrimClip}
-        onAddMedia={() => navigation.navigate('MediaPicker')}
+        onAddMedia={handleAddMedia}
         onTransitionPress={handleOpenTransition}
         onSelectTextLayer={layer => {
           setSelectedTextLayer(layer);

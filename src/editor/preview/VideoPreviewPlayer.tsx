@@ -251,6 +251,7 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
           >
             {isCurrentVideo && currentClip?.uri && !currentClip?.isReversed ? (
               <NativeVideoView
+                key={currentClip.id}
                 videoUri={currentClip.uri}
                 isPlaying={isPlaying}
                 currentTimeMs={Math.max(
@@ -269,6 +270,7 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
               />
             ) : activeFrameUri ? (
               <Image
+                key={currentClip?.id}
                 source={{ uri: activeFrameUri }}
                 style={styles.mediaImage}
                 resizeMode={

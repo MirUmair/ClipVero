@@ -18,6 +18,7 @@ export type MainCategory =
   | 'more';
 
 export type EditSubAction =
+  | 'addMedia'
   | 'split'
   | 'trim'
   | 'transition'
@@ -86,6 +87,7 @@ const EDIT_ACTIONS: Array<{
   icon: IconName;
   danger?: boolean;
 }> = [
+  { id: 'addMedia', label: 'Add Media', icon: 'plus' },
   { id: 'trim', label: 'Trim', icon: 'scissors' },
   { id: 'split', label: 'Split', icon: 'scissors' },
   { id: 'transition', label: 'Transition', icon: 'layers' },

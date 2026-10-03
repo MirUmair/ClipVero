@@ -19,6 +19,8 @@ export interface NavigationParams {
   initialClips?: MediaClip[];
   quickToolMode?: string;
   sourceScreen?: ScreenName;
+  mode?: 'new' | 'append';
+  addedClipsCount?: number;
 }
 
 interface NavigationContextType {

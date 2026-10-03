@@ -506,4 +506,124 @@ describe('Clipvero Media & Timeline Engine', () => {
       expect(Array.isArray(picked)).toBe(true);
     });
   });
+
+  describe('Timeline Multi-Clip Append & Sequencing', () => {
+    it('appends a second video clip to an existing project timeline preserving sequence and properties', () => {
+      const clip1: MediaClip = {
+        id: 'clip_1',
+        name: 'First Video.mp4',
+        uri: 'file:///first.mp4',
+        type: 'video',
+        duration: 5.0,
+        originalDuration: 10.0,
+        trimStart: 0,
+        trimEnd: 5.0,
+        speed: 1.0,
+        volume: 0.8,
+        isMuted: false,
+        rotation: 0,
+        flipHorizontal: false,
+        flipVertical: false,
+        crop: null,
+        filterId: 'vibrant',
+        adjustments: {
+          brightness: 10,
+          contrast: 0,
+          saturation: 0,
+          exposure: 0,
+          temperature: 0,
+          highlights: 0,
+          shadows: 0,
+          sharpen: 0,
+        },
+        transition: { type: 'fade', duration: 0.5 },
+      };
+
+      const existingProject: Project = {
+        id: 'proj_existing_123',
+        name: 'My Summer Reel',
+        createdAt: 1000,
+        updatedAt: 1000,
+        aspectRatio: '9:16',
+        canvasBackground: { type: 'blur' },
+        clips: [clip1],
+        textLayers: [
+          {
+            id: 'txt1',
+            text: 'Intro',
+            startTime: 0,
+            endTime: 3,
+            color: '#fff',
+            fontSize: 24,
+            x: 0.5,
+            y: 0.5,
+            scale: 1,
+            rotation: 0,
+            opacity: 1,
+            textAlign: 'center',
+          },
+        ],
+        stickerLayers: [],
+        audioTracks: [],
+        exportSettings: {
+          resolution: '1080p',
+          fps: 30,
+          quality: 'recommended',
+          format: 'mp4',
+        },
+      };
+
+      const clip2: MediaClip = {
+        id: 'clip_2',
+        name: 'Second Video.mp4',
+        uri: 'file:///second.mp4',
+        type: 'video',
+        duration: 8.0,
+        originalDuration: 8.0,
+        trimStart: 0,
+        trimEnd: 8.0,
+        speed: 1.0,
+        volume: 1.0,
+        isMuted: false,
+        rotation: 0,
+        flipHorizontal: false,
+        flipVertical: false,
+        crop: null,
+        filterId: 'none',
+        adjustments: {
+          brightness: 0,
+          contrast: 0,
+          saturation: 0,
+          exposure: 0,
+          temperature: 0,
+          highlights: 0,
+          shadows: 0,
+          sharpen: 0,
+        },
+        transition: { type: 'none', duration: 0.5 },
+      };
+
+      // Append clip2 to existingProject
+      const updatedProject: Project = {
+        ...existingProject,
+        clips: [...existingProject.clips, clip2],
+        updatedAt: 2000,
+      };
+
+      // Assertions
+      expect(updatedProject.id).toBe(existingProject.id);
+      expect(updatedProject.name).toBe(existingProject.name);
+      expect(updatedProject.clips.length).toBe(2);
+      expect(updatedProject.clips[0].id).toBe('clip_1');
+      expect(updatedProject.clips[0].filterId).toBe('vibrant');
+      expect(updatedProject.clips[1].id).toBe('clip_2');
+      expect(updatedProject.textLayers.length).toBe(1);
+      expect(calculateProjectTotalDuration(updatedProject.clips)).toBe(13.0);
+
+      // Verify playhead positioning at second clip
+      const clip2Range = getClipTimelineRange(updatedProject.clips, 1);
+      expect(clip2Range.start).toBe(5.0);
+      expect(clip2Range.end).toBe(13.0);
+    });
+  });
 });

@@ -21,6 +21,7 @@ import { useAppNavigation } from '../navigation/navigationContext';
 import { HapticsService } from '../services/hapticsService';
 import { MediaEngine } from '../media/mediaEngine';
 import { formatDuration } from '../utils/timeUtils';
+import { AutosaveManager } from '../storage/autosaveManager';
 
 // Sample royalty-free starter footage clips for testing and out-of-the-box editing
 const SAMPLE_MEDIA: Array<Omit<MediaClip, 'id'>> = [
@@ -194,16 +195,45 @@ export const MediaPickerScreen: React.FC = () => {
     });
   };
 
+  const existingProject = navigation.params?.project;
+  const isAppendMode =
+    navigation.params?.mode === 'append' ||
+    (!!existingProject && !navigation.params?.quickToolMode);
+  const quickToolMode = navigation.params?.quickToolMode;
+
   const handleProceedToEditor = () => {
     if (selectedClips.length === 0) {
       Alert.alert(
         'No Media Selected',
-        'Please select at least one video to start editing.',
+        isAppendMode
+          ? 'Please select at least one video to add to your project.'
+          : 'Please select at least one video to start editing.',
       );
       return;
     }
 
     HapticsService.medium();
+
+    if (isAppendMode && existingProject) {
+      const updatedClips = [...existingProject.clips, ...selectedClips];
+      const updatedProject: Project = {
+        ...existingProject,
+        clips: updatedClips,
+        updatedAt: Date.now(),
+        thumbnailUri:
+          existingProject.thumbnailUri ||
+          selectedClips[0]?.thumbnailUri ||
+          selectedClips[0]?.uri,
+      };
+
+      AutosaveManager.scheduleSave(updatedProject);
+      navigation.navigate('Editor', {
+        project: updatedProject,
+        addedClipsCount: selectedClips.length,
+      });
+      return;
+    }
+
     const newProject: Project = {
       id: `proj_${Date.now()}`,
       name: `Reel ${new Date().toLocaleDateString(undefined, {
@@ -227,11 +257,16 @@ export const MediaPickerScreen: React.FC = () => {
       thumbnailUri: selectedClips[0]?.thumbnailUri || selectedClips[0]?.uri,
     };
 
-    const quickToolMode = navigation.params?.quickToolMode;
     navigation.navigate('Editor', { project: newProject, quickToolMode });
   };
 
-  const quickToolMode = navigation.params?.quickToolMode;
+  const handleBack = () => {
+    if (isAppendMode && existingProject) {
+      navigation.navigate('Editor', { project: existingProject });
+    } else {
+      navigation.goBack();
+    }
+  };
 
   return (
     <View
@@ -241,18 +276,47 @@ export const MediaPickerScreen: React.FC = () => {
       ]}
     >
       <Header
-        title={quickToolMode === 'trim' ? 'Trim Video' : 'Select Media'}
+        title={
+          isAppendMode
+            ? 'Add Media'
+            : quickToolMode === 'trim'
+            ? 'Trim Video'
+            : 'Select Media'
+        }
         subtitle={
-          selectedClips.length > 0
+          isAppendMode
+            ? selectedClips.length > 0
+              ? `${selectedClips.length} new clip${
+                  selectedClips.length === 1 ? '' : 's'
+                } selected`
+              : `Add to "${existingProject?.name || 'Project'}"`
+            : selectedClips.length > 0
             ? `${selectedClips.length} items selected`
             : quickToolMode === 'trim'
             ? 'Select a video to trim'
             : 'Pick footage to edit'
         }
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
       />
 
       <View style={styles.content}>
+        {/* Context Banner when appending to an existing project */}
+        {isAppendMode && existingProject && (
+          <View style={styles.projectContextCard}>
+            <View style={styles.projectContextBadge}>
+              <AppIcon name="layers" size={16} color={colors.primaryLight} />
+            </View>
+            <View style={styles.projectContextInfo}>
+              <Text style={styles.projectContextTitle} numberOfLines={1}>
+                Adding to: {existingProject.name}
+              </Text>
+              <Text style={styles.projectContextSubtitle}>
+                {existingProject.clips.length} existing clip{existingProject.clips.length === 1 ? '' : 's'} · New footage will append to timeline
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Device Photo / Video Gallery Picker */}
         <Pressable
           style={[
@@ -305,14 +369,18 @@ export const MediaPickerScreen: React.FC = () => {
 
         {/* Selected Media Sequence */}
         <Text style={[styles.sectionHeader, { marginTop: spacing.lg }]}>
-          Project Sequence ({selectedClips.length})
+          {isAppendMode
+            ? `New Clips to Add (${selectedClips.length})`
+            : `Project Sequence (${selectedClips.length})`}
         </Text>
 
         {selectedClips.length === 0 ? (
           <View style={styles.emptyBox}>
             <AppIcon name="sparkles" size={28} color={colors.textSecondary} />
             <Text style={styles.emptyText}>
-              Tap footage above to add to your project
+              {isAppendMode
+                ? 'Tap footage above to append to your project timeline'
+                : 'Tap footage above to add to your project'}
             </Text>
           </View>
         ) : (
@@ -377,7 +445,15 @@ export const MediaPickerScreen: React.FC = () => {
       {/* Bottom CTA */}
       <View style={styles.bottomBar}>
         <Button
-          title={`Open Editor (${selectedClips.length})`}
+          title={
+            isAppendMode
+              ? selectedClips.length > 0
+                ? `Add ${selectedClips.length} Clip${
+                    selectedClips.length === 1 ? '' : 's'
+                  } to Timeline`
+                : 'Select Media to Add'
+              : `Open Editor (${selectedClips.length})`
+          }
           variant="primary"
           size="lg"
           onPress={handleProceedToEditor}
@@ -396,6 +472,40 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: spacing.base,
+  },
+  projectContextCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(124, 77, 255, 0.12)',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 4,
+    marginVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 77, 255, 0.3)',
+  },
+  projectContextBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(124, 77, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm + 2,
+  },
+  projectContextInfo: {
+    flex: 1,
+  },
+  projectContextTitle: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  projectContextSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
+    marginTop: 1,
   },
   devicePickerCard: {
     flexDirection: 'row',
