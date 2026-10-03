@@ -2,13 +2,14 @@
  * Clipvero - Modern Reels, Shorts, and Social Video Editor
  */
 
+import React, { useState } from 'react';
 import { StatusBar, StyleSheet, View, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { ErrorBoundary } from './src/components/common/ErrorBoundary';
-import { colors } from './src/theme/colors';
-
 import { ThemedAlertModal } from './src/components/common/ThemedAlertModal';
+import { SplashScreen } from './src/screens/SplashScreen';
+import { colors } from './src/theme/colors';
 
 LogBox.ignoreLogs([
   'Cannot connect to Metro',
@@ -16,12 +17,17 @@ LogBox.ignoreLogs([
 ]);
 
 function App() {
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
+
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" backgroundColor="#080B14" translucent />
       <View style={styles.container}>
         <ErrorBoundary>
           <AppNavigator />
+          {isSplashVisible && (
+            <SplashScreen onFinish={() => setIsSplashVisible(false)} />
+          )}
           <ThemedAlertModal />
         </ErrorBoundary>
       </View>

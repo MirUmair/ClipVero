@@ -55,9 +55,17 @@ describe('ThemedAlert Service', () => {
     });
 
     let confirmed = false;
-    ThemedAlert.confirm('Discard Edits?', 'All unsaved changes will be lost.', () => {
-      confirmed = true;
-    }, undefined, 'Discard', 'Keep', true);
+    ThemedAlert.confirm(
+      'Discard Edits?',
+      'All unsaved changes will be lost.',
+      () => {
+        confirmed = true;
+      },
+      undefined,
+      'Discard',
+      'Keep',
+      true,
+    );
 
     expect(received?.type).toBe('error');
     expect(received?.title).toBe('Discard Edits?');
