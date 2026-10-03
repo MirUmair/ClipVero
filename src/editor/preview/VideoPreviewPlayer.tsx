@@ -16,6 +16,7 @@ import { FILTER_PRESETS } from '../filters/filterPresets';
 import { findClipAtTimelineTime } from '../../utils/timeUtils';
 import { ThumbnailCache } from '../../media/thumbnailCache';
 import { MediaEngine } from '../../media/mediaEngine';
+import { NativeVideoView } from '../../components/common/NativeVideoView';
 
 interface VideoPreviewPlayerProps {
   project: Project;
@@ -34,6 +35,7 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
   project,
   activeClip,
   currentTime,
+  isPlaying = false,
   onTogglePlay,
   onSelectTextLayer,
   selectedTextLayerId,
@@ -77,6 +79,9 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
       clean.endsWith('.3gp')
     );
   };
+
+  const isCurrentVideo =
+    currentClip?.type === 'video' || isVideoUri(currentClip?.uri);
 
   // Retrieve cached timeline frames to dynamically animate preview across playback and scrub
   const clipId = currentClip?.id;
@@ -205,7 +210,25 @@ export const VideoPreviewPlayer: React.FC<VideoPreviewPlayerProps> = ({
               },
             ]}
           >
-            {activeFrameUri ? (
+            {isCurrentVideo && currentClip?.uri && !currentClip?.isReversed ? (
+              <NativeVideoView
+                videoUri={currentClip.uri}
+                isPlaying={isPlaying}
+                currentTimeMs={Math.max(
+                  0,
+                  Math.round((activeClipInfo?.localTime ?? 0) * 1000),
+                )}
+                speed={currentClip.speed || 1.0}
+                volume={currentClip.volume ?? 1.0}
+                isMuted={currentClip.isMuted ?? false}
+                resizeMode={
+                  project?.canvasBackground?.type === 'fill'
+                    ? 'cover'
+                    : 'contain'
+                }
+                style={styles.mediaImage}
+              />
+            ) : activeFrameUri ? (
               <Image
                 source={{ uri: activeFrameUri }}
                 style={styles.mediaImage}

@@ -234,10 +234,11 @@ export const EditorScreen: React.FC = () => {
           )
         : -1;
 
+      const isNativeVideoActive = !!(audioClip && !audioClip.isReversed);
       MediaEngine.playPreviewAudio({
-        clipUri: audioClip?.uri,
-        clipVolume: audioClip?.volume ?? 1.0,
-        clipMuted: audioClip?.isMuted ?? false,
+        clipUri: isNativeVideoActive ? null : audioClip?.uri,
+        clipVolume: isNativeVideoActive ? 0 : (audioClip?.volume ?? 1.0),
+        clipMuted: isNativeVideoActive ? true : (audioClip?.isMuted ?? false),
         clipSpeed: audioClip?.speed ?? 1.0,
         trackUri: activeAudioTrack?.uri,
         trackVolume: activeAudioTrack?.volume ?? 1.0,
