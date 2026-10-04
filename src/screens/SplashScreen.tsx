@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -113,20 +113,18 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
       style={[styles.container, { opacity: screenFade }]}
       pointerEvents={screenFade ? 'auto' : 'none'}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#080B14"
+        translucent
+      />
 
       {/* Ambient Radial Glowing Orbs */}
       <Animated.View
-        style={[
-          styles.glowOrbTop,
-          { transform: [{ scale: glowScale }] },
-        ]}
+        style={[styles.glowOrbTop, { transform: [{ scale: glowScale }] }]}
       />
       <Animated.View
-        style={[
-          styles.glowOrbBottom,
-          { transform: [{ scale: glowScale }] },
-        ]}
+        style={[styles.glowOrbBottom, { transform: [{ scale: glowScale }] }]}
       />
 
       {/* Center Branding Block */}
@@ -164,9 +162,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
           <Text style={styles.tagline}>CREATE · EDIT · SHARE</Text>
 
-          <Text style={styles.slogan}>
-            Powerful Video Editing Made Simple
-          </Text>
+          <Text style={styles.slogan}>Powerful Video Editing Made Simple</Text>
 
           {/* Full Screen Centered Loader */}
           <View style={styles.loaderContainer}>
@@ -175,7 +171,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
                 style={[styles.progressBar, { width: progressWidth }]}
               />
             </View>
-            <Text style={styles.versionText}>ClipVero Studio · Fast & Offline</Text>
+            <Text style={styles.versionText}>
+              ClipVero Studio · Fast & Offline
+            </Text>
           </View>
         </Animated.View>
       </View>
@@ -185,12 +183,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
 const styles = StyleSheet.create({
   container: {
+    ...StyleSheet.absoluteFillObject,
     flex: 1,
     width: '100%',
     height: '100%',
     backgroundColor: '#080B14',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 9999,
   },
   glowOrbTop: {
     position: 'absolute',
@@ -199,6 +199,7 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: 140,
     backgroundColor: 'rgba(139, 92, 246, 0.12)', // Subtle Violet glow
+    filter: 'blur(60px)',
   },
   glowOrbBottom: {
     position: 'absolute',
@@ -207,6 +208,7 @@ const styles = StyleSheet.create({
     height: 240,
     borderRadius: 120,
     backgroundColor: 'rgba(0, 210, 255, 0.08)', // Subtle Cyan glow
+    filter: 'blur(50px)',
   },
   centerContent: {
     alignItems: 'center',

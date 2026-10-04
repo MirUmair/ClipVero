@@ -17,8 +17,8 @@
 -keep class * implements com.facebook.react.ReactPackage { *; }
 
 # Keep Clipvero Native Engine Module & Package
--keep class com.clipvero.** { *; }
--keepclassmembers class com.clipvero.** { *; }
+-keep class com.video.editor.** { *; }
+-keepclassmembers class com.video.editor.** { *; }
 
 # ==============================================================================
 # AndroidX Media3 (Transformer, Effect, Common)

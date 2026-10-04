@@ -1,4 +1,4 @@
-package com.clipvero
+package com.video.editor
 
 import android.content.Context
 import android.graphics.Matrix

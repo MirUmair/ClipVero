@@ -1,4 +1,4 @@
-package com.clipvero
+package com.video.editor
 
 import android.app.Activity
 import android.content.Context

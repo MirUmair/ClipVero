@@ -1,4 +1,4 @@
-package com.clipvero
+package com.video.editor
 
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext

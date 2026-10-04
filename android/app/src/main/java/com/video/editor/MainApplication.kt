@@ -1,4 +1,4 @@
-package com.clipvero
+package com.video.editor
 
 import android.app.Application
 import com.facebook.react.PackageList

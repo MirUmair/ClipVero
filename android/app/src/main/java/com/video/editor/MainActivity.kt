@@ -1,4 +1,4 @@
-package com.clipvero
+package com.video.editor
 
 import android.os.Build
 import android.os.Bundle
@@ -64,4 +64,3 @@ class MainActivity : ReactActivity() {
       }
   }
 }
-
