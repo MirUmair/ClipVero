@@ -79,10 +79,17 @@ export const HomeScreen: React.FC = () => {
   const [renameText, setRenameText] = useState('');
 
   const loadData = useCallback(async () => {
-    const projList = await ProjectStorage.getAllProjects();
-    const expList = await ProjectStorage.getAllExports();
-    setProjects(projList);
-    setExportsList(expList);
+    try {
+      const projList = await ProjectStorage.getAllProjects();
+      const expList = await ProjectStorage.getAllExports();
+      setProjects(projList);
+      setExportsList(expList);
+    } catch {
+      Alert.alert(
+        'Library Unavailable',
+        'Saved projects could not be read. Please try again.',
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -106,7 +113,12 @@ export const HomeScreen: React.FC = () => {
 
   const handleDuplicateProject = async (id: string) => {
     HapticsService.light();
-    await ProjectStorage.duplicateProject(id);
+    try {
+      await ProjectStorage.duplicateProject(id);
+    } catch {
+      Alert.alert('Save Failed', 'Could not duplicate this project.');
+      return;
+    }
     loadData();
   };
 
@@ -121,7 +133,12 @@ export const HomeScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             HapticsService.snap();
-            await ProjectStorage.deleteProject(project.id);
+            try {
+              await ProjectStorage.deleteProject(project.id);
+            } catch {
+              Alert.alert('Delete Failed', 'Could not delete this project.');
+              return;
+            }
             loadData();
           },
         },
@@ -137,7 +154,12 @@ export const HomeScreen: React.FC = () => {
 
   const handleSaveRename = async () => {
     if (targetProject && renameText.trim()) {
-      await ProjectStorage.renameProject(targetProject.id, renameText.trim());
+      try {
+        await ProjectStorage.renameProject(targetProject.id, renameText.trim());
+      } catch {
+        Alert.alert('Save Failed', 'Could not rename this project.');
+        return;
+      }
       setRenameModalVisible(false);
       loadData();
     }
@@ -151,7 +173,12 @@ export const HomeScreen: React.FC = () => {
         style: 'destructive',
         onPress: async () => {
           HapticsService.snap();
-          await ProjectStorage.deleteExport(item.id);
+          try {
+            await ProjectStorage.deleteExport(item.id);
+          } catch {
+            Alert.alert('Delete Failed', 'Could not delete this export.');
+            return;
+          }
           loadData();
         },
       },

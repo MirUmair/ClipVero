@@ -3,6 +3,7 @@ package com.clipvero
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.ClipData
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaCodec
@@ -19,6 +20,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.Log
+import android.util.AtomicFile
+import androidx.core.content.FileProvider
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -54,12 +57,14 @@ import java.nio.ByteOrder
 import kotlin.math.*
 import java.util.concurrent.Executors
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     private val executor = Executors.newFixedThreadPool(4)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var activeTransformer: Transformer? = null
+    @Volatile private var activeExportPromise: Promise? = null
     private var activeOutputFile: File? = null
     private var isCancelled = false
     private var progressRunnable: Runnable? = null
@@ -120,6 +125,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                             var height = 1920
                             var thumbUriStr: String? = null
                             var name = "Clip_${System.currentTimeMillis()}"
+                            val isImage = reactContext.contentResolver.getType(uri)?.startsWith("image/") == true
 
                             try {
                                 try {
@@ -135,6 +141,16 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                                     }
                                 } catch (_: Exception) {}
 
+                                if (isImage) {
+                                    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                    reactContext.contentResolver.openInputStream(uri)?.use {
+                                        BitmapFactory.decodeStream(it, null, options)
+                                    }
+                                    require(options.outWidth > 0 && options.outHeight > 0) { "Cannot decode image." }
+                                    width = options.outWidth
+                                    height = options.outHeight
+                                    durationSec = 5.0
+                                } else {
                                 if (uri.scheme == "content") {
                                     retriever.setDataSource(reactContext, uri)
                                 } else {
@@ -164,7 +180,9 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                                     if (scaled != bitmap) scaled.recycle()
                                     bitmap.recycle()
                                 }
-                            } catch (_: Exception) {
+                                }
+                            } catch (e: Exception) {
+                                throw IllegalArgumentException("Could not read selected media.", e)
                             } finally {
                                 try { retriever.release() } catch (_: Exception) {}
                             }
@@ -172,7 +190,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                             val itemMap = Arguments.createMap()
                             itemMap.putString("uri", uri.toString())
                             itemMap.putString("name", name)
-                            itemMap.putString("type", "video")
+                            itemMap.putString("type", if (isImage) "image" else "video")
                             itemMap.putDouble("duration", durationSec)
                             itemMap.putDouble("originalDuration", durationSec)
                             itemMap.putInt("width", width)
@@ -299,8 +317,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
             if (targetFile.exists() && targetFile.length() > 0) {
                 return Uri.fromFile(targetFile)
             }
-            val fallback = extractAssetSampleIfMissing("sample1.mp4")
-            return Uri.fromFile(fallback)
+            throw IllegalArgumentException("Bundled media is unavailable.")
         }
 
         // 2. Android Content scheme (content://...)
@@ -333,8 +350,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
             } catch (e: Exception) {
                 Log.w("ClipveroMediaEngine", "Could not cache content URI: ${e.message}")
             }
-            val fallback = extractAssetSampleIfMissing("sample1.mp4")
-            return Uri.fromFile(fallback)
+            throw IllegalArgumentException("Selected media is unavailable. Please import it again.")
         }
 
         // 3. Remote HTTP / HTTPS URLs
@@ -361,8 +377,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 }
             } catch (_: Exception) {
             }
-            val sampleFile = extractAssetSampleIfMissing("sample1.mp4")
-            return Uri.fromFile(sampleFile)
+            throw IllegalArgumentException("Could not download media. Check your connection and try again.")
         }
 
         // 4. File URIs (file://...)
@@ -376,8 +391,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 val sampleFile = extractAssetSampleIfMissing(file.name)
                 if (sampleFile.exists()) return Uri.fromFile(sampleFile)
             }
-            val fallback = extractAssetSampleIfMissing("sample1.mp4")
-            return Uri.fromFile(fallback)
+            throw IllegalArgumentException("Media file is unavailable. Please import it again.")
         }
 
         // 5. Bare local path
@@ -386,8 +400,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
             return Uri.fromFile(file)
         }
 
-        val sampleFallback = extractAssetSampleIfMissing("sample1.mp4")
-        return Uri.fromFile(sampleFallback)
+        throw IllegalArgumentException("Media file is unavailable. Please import it again.")
     }
 
     private fun setRetrieverDataSource(retriever: MediaMetadataRetriever, uriStr: String) {
@@ -788,7 +801,15 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                         break
                     }
                     bufferInfo.presentationTimeUs = extractor.sampleTime
-                    bufferInfo.flags = extractor.sampleFlags
+                    val sampleFlags = extractor.sampleFlags
+                    require(sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED == 0) { "Encrypted audio is unsupported." }
+                    bufferInfo.flags = 0
+                    if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+                        bufferInfo.flags = bufferInfo.flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+                    }
+                    if (sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
+                        bufferInfo.flags = bufferInfo.flags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+                    }
 
                     muxer.writeSampleData(muxerAudioTrack, buffer, bufferInfo)
                     extractor.advance()
@@ -807,7 +828,13 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
     }
 
     @ReactMethod
+    @Synchronized
     fun exportProject(configJson: String, promise: Promise) {
+        if (activeExportPromise != null) {
+            promise.reject("EXPORT_BUSY", "An export is already running.")
+            return
+        }
+        activeExportPromise = promise
         executor.execute {
             try {
                 isCancelled = false
@@ -817,6 +844,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                 val exportSettings = projectObj.optJSONObject("exportSettings")
 
                 if (clipsArray.length() == 0) {
+                    if (activeExportPromise === promise) activeExportPromise = null
                     promise.reject("NO_CLIPS", "Cannot export project with 0 clips.")
                     return@execute
                 }
@@ -849,8 +877,8 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     }
                 }
 
-                val outputFile = File(exportDir, "${projectName}_${System.currentTimeMillis()}.mp4")
-                activeOutputFile = outputFile
+                val safeName = projectName.replace(Regex("[^A-Za-z0-9_-]"), "_").take(80).ifEmpty { "Clipvero" }
+                val outputFile = File(exportDir, "${safeName}_${System.currentTimeMillis()}.mp4")
 
                 val editedMediaItems = ArrayList<EditedMediaItem>()
 
@@ -951,7 +979,7 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                             sequences.add(EditedMediaItemSequence(listOf(editedAudio)))
                             hasExtraAudio = true
                         } catch (e: Exception) {
-                            Log.w("ClipveroMediaEngine", "Could not include audio track: ${e.message}")
+                            throw IllegalArgumentException("Could not include audio track.", e)
                         }
                     }
                 }
@@ -964,6 +992,8 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     .build()
 
                 mainHandler.post {
+                    if (activeExportPromise !== promise) return@post
+                    activeOutputFile = outputFile
                     try {
                         val requestBuilder = TransformationRequest.Builder()
                             .setVideoMimeType(MimeTypes.VIDEO_H264)
@@ -978,8 +1008,11 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                             .setTransformationRequest(transformationRequest)
                             .addListener(object : Transformer.Listener {
                                 override fun onCompleted(composition: Composition, exportResult: androidx.media3.transformer.ExportResult) {
+                                    if (activeExportPromise !== promise) return
                                     stopProgressPolling()
                                     activeTransformer = null
+                                    activeExportPromise = null
+                                    activeOutputFile = null
                                     val result = Arguments.createMap()
                                     result.putString("outputPath", "file://${outputFile.absolutePath}")
                                     result.putDouble("fileSize", outputFile.length().toDouble())
@@ -992,8 +1025,11 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                                     exportResult: androidx.media3.transformer.ExportResult,
                                     exportException: androidx.media3.transformer.ExportException
                                 ) {
+                                    if (activeExportPromise !== promise) return
                                     stopProgressPolling()
                                     activeTransformer = null
+                                    activeExportPromise = null
+                                    activeOutputFile = null
                                     if (outputFile.exists()) outputFile.delete()
                                     val errorDetail = exportException.cause?.message ?: exportException.message
                                     val codeName = exportException.errorCodeName
@@ -1007,13 +1043,22 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                         startProgressPolling(transformer)
 
                     } catch (e: Exception) {
+                        stopProgressPolling()
+                        activeTransformer = null
+                        activeExportPromise = null
+                        activeOutputFile = null
                         if (outputFile.exists()) outputFile.delete()
                         promise.reject("EXPORT_INIT_ERROR", "Failed to start transformer: ${e.message}", e)
                     }
                 }
 
             } catch (e: Exception) {
-                promise.reject("EXPORT_PARSE_ERROR", "Export configuration failed: ${e.message}", e)
+                mainHandler.post {
+                    if (activeExportPromise === promise) {
+                        activeExportPromise = null
+                        promise.reject("EXPORT_PARSE_ERROR", "Export configuration failed: ${e.message}", e)
+                    }
+                }
             }
         }
     }
@@ -1053,9 +1098,38 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
                     if (it.exists()) it.delete()
                 }
                 activeOutputFile = null
+                activeExportPromise?.reject("EXPORT_CANCELLED", "Export cancelled.")
+                activeExportPromise = null
                 promise.resolve(true)
             } catch (e: Exception) {
                 promise.reject("CANCEL_ERROR", "Failed to cancel export: ${e.message}", e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun shareVideo(filePath: String, title: String, promise: Promise) {
+        mainHandler.post {
+            try {
+                val activity = reactContext.currentActivity
+                    ?: throw IllegalStateException("No active screen available for sharing.")
+                val file = File(Uri.parse(filePath).path ?: filePath).canonicalFile
+                val exportDir = File(reactContext.filesDir, "exports").canonicalFile
+                require(file.parentFile == exportDir && file.isFile && file.length() > 0) {
+                    "The exported video is missing or unavailable."
+                }
+                val uri = FileProvider.getUriForFile(reactContext, "${reactContext.packageName}.exports", file)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "video/mp4"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_TITLE, title)
+                    clipData = ClipData.newRawUri("video", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                activity.startActivity(Intent.createChooser(intent, title))
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.reject("SHARE_ERROR", "Could not share video: ${e.message}", e)
             }
         }
     }
@@ -1065,8 +1139,17 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         executor.execute {
             try {
                 val file = File(reactContext.filesDir, filename)
-                FileOutputStream(file).use { out ->
-                    out.write(content.toByteArray(Charsets.UTF_8))
+                require(file.canonicalFile.parentFile == reactContext.filesDir.canonicalFile)
+                val atomicFile = AtomicFile(file)
+                synchronized(this) {
+                    val out = atomicFile.startWrite()
+                    try {
+                        out.write(content.toByteArray(Charsets.UTF_8))
+                        atomicFile.finishWrite(out)
+                    } catch (e: Exception) {
+                        atomicFile.failWrite(out)
+                        throw e
+                    }
                 }
                 promise.resolve(file.absolutePath)
             } catch (e: Exception) {
@@ -1080,11 +1163,13 @@ class ClipveroMediaEngineModule(private val reactContext: ReactApplicationContex
         executor.execute {
             try {
                 val file = File(reactContext.filesDir, filename)
-                if (!file.exists()) {
+                require(file.canonicalFile.parentFile == reactContext.filesDir.canonicalFile)
+                val atomicFile = AtomicFile(file)
+                if (!file.exists() && !File("${file.path}.bak").exists()) {
                     promise.resolve(null)
                     return@execute
                 }
-                val content = file.readText(Charsets.UTF_8)
+                val content = synchronized(this) { atomicFile.openRead().bufferedReader(Charsets.UTF_8).use { it.readText() } }
                 promise.resolve(content)
             } catch (e: Exception) {
                 promise.reject("READ_FILE_ERROR", "Could not read file: ${e.message}", e)

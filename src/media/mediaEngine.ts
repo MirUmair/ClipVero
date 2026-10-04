@@ -6,6 +6,7 @@
 
 import { NativeModules, NativeEventEmitter } from 'react-native';
 import { Project, MediaClip } from '../types/project';
+import { getUnsupportedExportFeatures } from './exportCapabilities';
 
 const { ClipveroMediaEngine } = NativeModules;
 
@@ -50,7 +51,6 @@ export interface PreviewAudioOptions extends PreviewAudioVolume {
 
 export class MediaEngine {
   private static eventEmitter: NativeEventEmitter | null = null;
-  private static isMock: boolean = !ClipveroMediaEngine;
   private static previewVolume: PreviewAudioVolume = {
     clipVolume: 1,
     clipMuted: false,
@@ -251,6 +251,16 @@ export class MediaEngine {
     project: Project,
     onProgress?: (progress: number) => void,
   ): Promise<NativeExportResult> {
+    if (!ClipveroMediaEngine?.exportProject) {
+      throw new Error('Video export is unavailable on this device.');
+    }
+    if (!project.clips.length) {
+      throw new Error('Add media before exporting.');
+    }
+    const unsupported = getUnsupportedExportFeatures(project);
+    if (unsupported.length) {
+      throw new Error(`Export cannot render these edits yet: ${unsupported.join(', ')}. Your project is preserved.`);
+    }
     let subscription: any = null;
 
     if (onProgress) {
@@ -272,6 +282,8 @@ export class MediaEngine {
           aspectRatio: project.aspectRatio || '9:16',
           clips: project.clips.map(c => ({
             uri: c.uri,
+            type: c.type,
+            duration: c.duration,
             trimStart: c.trimStart,
             trimEnd: c.trimEnd,
             speed: c.speed,
@@ -295,19 +307,7 @@ export class MediaEngine {
         return result;
       }
 
-      // Non-native testing mock export (simulates progress and produces dummy file)
-      for (let p = 0; p <= 100; p += 25) {
-        if (onProgress) onProgress(p);
-        await new Promise<void>(resolve => {
-          setTimeout(() => resolve(), 60);
-        });
-      }
-
-      return {
-        outputPath: project.clips[0]?.uri || 'file:///mock/output.mp4',
-        fileSize: 1024 * 1024 * 5, // 5 MB
-        resolution: '1080x1920',
-      };
+      throw new Error('Video export is unavailable on this device.');
     } finally {
       if (subscription) {
         subscription.remove();
@@ -396,7 +396,7 @@ export class MediaEngine {
     if (ClipveroMediaEngine?.startVoiceoverRecording) {
       return await ClipveroMediaEngine.startVoiceoverRecording();
     }
-    return { isRecording: true, filePath: 'file:///mock_voiceover.m4a' };
+    throw new Error('Voiceover recording is unavailable on this device.');
   }
 
   /**
@@ -410,11 +410,7 @@ export class MediaEngine {
     if (ClipveroMediaEngine?.stopVoiceoverRecording) {
       return await ClipveroMediaEngine.stopVoiceoverRecording();
     }
-    return {
-      uri: 'file:///mock_voiceover.m4a',
-      name: 'Voiceover',
-      duration: 3.0,
-    };
+    throw new Error('Voiceover recording is unavailable on this device.');
   }
 
   /**

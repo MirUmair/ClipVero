@@ -5,16 +5,19 @@
 
 import { Project } from '../types/project';
 import { ProjectStorage } from './projectStorage';
+import { ThemedAlert } from '../services/alertService';
 
 export class AutosaveManager {
   private static pendingProject: Project | null = null;
   private static saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private static debounceDelayMs = 600;
+  private static revision = 0;
 
   /**
    * Schedule debounced save for the project
    */
   public static scheduleSave(project: Project) {
+    this.revision += 1;
     this.pendingProject = project;
 
     if (this.saveTimeout) {
@@ -37,8 +40,17 @@ export class AutosaveManager {
 
     if (this.pendingProject) {
       const proj = this.pendingProject;
+      const revision = this.revision;
       this.pendingProject = null;
-      await ProjectStorage.saveProject(proj);
+      try {
+        await ProjectStorage.saveProject(proj);
+      } catch {
+        if (!this.pendingProject && this.revision === revision) this.pendingProject = proj;
+        ThemedAlert.error(
+          'Save Failed',
+          'Your latest edits could not be saved. Check device storage and try again.',
+        );
+      }
     }
   }
 
@@ -46,6 +58,7 @@ export class AutosaveManager {
    * Discards pending save (if user discards edits)
    */
   public static cancel() {
+    this.revision += 1;
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
       this.saveTimeout = null;

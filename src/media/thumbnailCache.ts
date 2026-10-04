@@ -26,7 +26,9 @@ export class ThumbnailCache {
   ): Promise<string[]> {
     const cached = this.cache.get(clipId);
     if (cached && cached.uri === uri && cached.thumbnails.length >= count) {
-      return cached.thumbnails.slice(0, count);
+      return Array.from({ length: count }, (_, index) =>
+        cached.thumbnails[Math.round(index * (cached.thumbnails.length - 1) / Math.max(1, count - 1))],
+      );
     }
 
     try {

@@ -6,6 +6,7 @@ import {
   Image,
   Pressable,
   Animated,
+  BackHandler,
 } from 'react-native';
 import { ThemedAlert as Alert } from '../services/alertService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,19 +28,17 @@ import { MediaEngine } from '../media/mediaEngine';
 import { ProjectStorage } from '../storage/projectStorage';
 import { SharingService } from '../services/sharingService';
 import { HapticsService } from '../services/hapticsService';
-import { formatDuration } from '../utils/timeUtils';
+import { formatDuration, calculateProjectTotalDuration } from '../utils/timeUtils';
 import { formatFileSize } from '../utils/fileUtils';
 
 const RESOLUTION_OPTIONS: ExportResolution[] = ['1080p', '720p', '480p'];
-const FPS_OPTIONS: ExportFps[] = ['original', 60, 30, 24];
+const FPS_OPTIONS: ExportFps[] = ['original'];
 const QUALITY_OPTIONS: Array<{
   id: ExportQuality;
   label: string;
   desc: string;
 }> = [
-  { id: 'high', label: 'High', desc: 'Best visual fidelity' },
   { id: 'recommended', label: 'Recommended', desc: 'Balanced quality & speed' },
-  { id: 'smaller', label: 'Smaller File', desc: 'Faster upload / share' },
 ];
 
 export const ExportScreen: React.FC = () => {
@@ -48,7 +47,7 @@ export const ExportScreen: React.FC = () => {
   const project = navigation.params.project;
 
   const [resolution, setResolution] = useState<ExportResolution>('1080p');
-  const [fps, setFps] = useState<ExportFps>(30);
+  const [fps, setFps] = useState<ExportFps>('original');
   const [quality, setQuality] = useState<ExportQuality>('recommended');
 
   const [isExporting, setIsExporting] = useState(false);
@@ -56,6 +55,21 @@ export const ExportScreen: React.FC = () => {
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const exportBusy = useRef(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (exportBusy.current) MediaEngine.cancelExport().catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => exportBusy.current);
+    return () => subscription.remove();
+  }, [isExporting]);
 
   useEffect(() => {
     Animated.timing(progressAnim, {
@@ -77,6 +91,8 @@ export const ExportScreen: React.FC = () => {
   }
 
   const handleStartExport = async () => {
+    if (exportBusy.current) return;
+    exportBusy.current = true;
     setIsExporting(true);
     setProgress(0);
     HapticsService.medium();
@@ -93,8 +109,9 @@ export const ExportScreen: React.FC = () => {
       };
 
       const result = await MediaEngine.exportProject(updatedProject, p => {
-        setProgress(p);
+        if (mounted.current) setProgress(p);
       });
+      if (!mounted.current) return;
 
       HapticsService.success();
 
@@ -104,38 +121,48 @@ export const ExportScreen: React.FC = () => {
         projectName: project.name,
         outputPath: result.outputPath,
         thumbnailUri: project.thumbnailUri || project.clips[0]?.thumbnailUri,
-        duration: project.clips.reduce((acc, c) => acc + c.duration, 0),
-        fileSizeBytes: result.fileSize || 1024 * 1024 * 6,
+        duration: calculateProjectTotalDuration(project.clips),
+        fileSizeBytes: result.fileSize,
         resolution: result.resolution || resolution,
         createdAt: Date.now(),
       };
 
       await ProjectStorage.saveExport(newExportResult);
+      if (!mounted.current) return;
       setExportResult(newExportResult);
       setIsExporting(false);
     } catch (e: any) {
+      if (!mounted.current) return;
       setIsExporting(false);
+      if (e.code === 'EXPORT_CANCELLED') return;
       Alert.alert(
         'Export Failed',
         e.message || 'An error occurred during video rendering.',
       );
+    } finally {
+      exportBusy.current = false;
     }
   };
 
   const handleCancelExport = async () => {
     HapticsService.snap();
-    await MediaEngine.cancelExport();
-    setIsExporting(false);
-    setProgress(0);
+    try {
+      await MediaEngine.cancelExport();
+      setIsExporting(false);
+      setProgress(0);
+    } catch (e: any) {
+      Alert.alert('Cancel Failed', e.message || 'Could not cancel export.');
+    }
   };
 
   const handleShare = async () => {
     if (!exportResult) return;
     HapticsService.light();
-    await SharingService.shareVideo(
+    const shared = await SharingService.shareVideo(
       exportResult.outputPath,
       exportResult.projectName,
     );
+    if (!shared) Alert.alert('Sharing Failed', 'Could not open the video share sheet.');
   };
 
   return (

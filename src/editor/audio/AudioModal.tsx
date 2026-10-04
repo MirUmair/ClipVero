@@ -178,6 +178,10 @@ export const AudioModal: React.FC<AudioModalProps> = ({
     HapticsService.light();
     setPreviewingSfxId(sfx.id);
     MediaEngine.playPreviewAudio({
+      clipVolume: 0,
+      clipMuted: true,
+      clipSpeed: 1,
+      clipPositionMs: 0,
       trackUri: sfx.uri,
       trackVolume: 1.0,
       trackMuted: false,

@@ -17,17 +17,19 @@ let inMemoryProjects: Record<string, Project> = {};
 let inMemoryExports: Record<string, ExportResult> = {};
 
 export class ProjectStorage {
+  private static writes: Promise<unknown> = Promise.resolve();
+
+  private static enqueueWrite(operation: () => Promise<void>): Promise<void> {
+    const next = this.writes.then(operation);
+    this.writes = next.catch(() => {});
+    return next;
+  }
   /**
    * Reads raw string from persistence (native file storage or memory)
    */
   private static async readString(key: string): Promise<string | null> {
     if (ClipveroMediaEngine?.readFile) {
-      try {
-        const content = await ClipveroMediaEngine.readFile(`${key}.json`);
-        return content;
-      } catch {
-        // Fall back to memory
-      }
+      return ClipveroMediaEngine.readFile(`${key}.json`);
     }
     return null;
   }
@@ -40,12 +42,7 @@ export class ProjectStorage {
     content: string,
   ): Promise<void> {
     if (ClipveroMediaEngine?.saveFile) {
-      try {
-        await ClipveroMediaEngine.saveFile(`${key}.json`, content);
-        return;
-      } catch (e) {
-        console.warn('Native write failed, using memory store:', e);
-      }
+      await ClipveroMediaEngine.saveFile(`${key}.json`, content);
     }
   }
 
@@ -57,10 +54,13 @@ export class ProjectStorage {
       const data = await this.readString(PROJECTS_KEY);
       if (data) {
         const list: Project[] = JSON.parse(data);
+        if (!Array.isArray(list))
+          throw new Error('Invalid saved projects list.');
         return list.sort((a, b) => b.updatedAt - a.updatedAt);
       }
     } catch (e) {
       console.warn('Failed to parse saved projects:', e);
+      throw e;
     }
 
     return Object.values(inMemoryProjects).sort(
@@ -87,34 +87,39 @@ export class ProjectStorage {
       updatedAt: Date.now(),
     };
 
-    inMemoryProjects[updated.id] = updated;
-
-    try {
-      const list = await this.getAllProjects();
-      const index = list.findIndex(p => p.id === updated.id);
-      if (index >= 0) {
-        list[index] = updated;
-      } else {
-        list.unshift(updated);
+    return this.enqueueWrite(async () => {
+      try {
+        const list = await this.getAllProjects();
+        const index = list.findIndex(p => p.id === updated.id);
+        if (index >= 0) {
+          list[index] = updated;
+        } else {
+          list.unshift(updated);
+        }
+        await this.writeString(PROJECTS_KEY, JSON.stringify(list));
+        inMemoryProjects[updated.id] = updated;
+      } catch (e) {
+        console.warn('Failed to persist project:', e);
+        throw e;
       }
-      await this.writeString(PROJECTS_KEY, JSON.stringify(list));
-    } catch (e) {
-      console.warn('Failed to persist project:', e);
-    }
+    });
   }
 
   /**
    * Delete project by ID
    */
   public static async deleteProject(id: string): Promise<void> {
-    delete inMemoryProjects[id];
-    try {
-      const list = await this.getAllProjects();
-      const filtered = list.filter(p => p.id !== id);
-      await this.writeString(PROJECTS_KEY, JSON.stringify(filtered));
-    } catch (e) {
-      console.warn('Failed to delete project:', e);
-    }
+    return this.enqueueWrite(async () => {
+      try {
+        const list = await this.getAllProjects();
+        const filtered = list.filter(p => p.id !== id);
+        await this.writeString(PROJECTS_KEY, JSON.stringify(filtered));
+        delete inMemoryProjects[id];
+      } catch (e) {
+        console.warn('Failed to delete project:', e);
+        throw e;
+      }
+    });
   }
 
   /**
@@ -159,10 +164,13 @@ export class ProjectStorage {
       const data = await this.readString(EXPORTS_KEY);
       if (data) {
         const list: ExportResult[] = JSON.parse(data);
+        if (!Array.isArray(list))
+          throw new Error('Invalid saved exports list.');
         return list.sort((a, b) => b.createdAt - a.createdAt);
       }
     } catch (e) {
       console.warn('Failed to parse exports:', e);
+      throw e;
     }
 
     return Object.values(inMemoryExports).sort(
@@ -171,30 +179,36 @@ export class ProjectStorage {
   }
 
   public static async saveExport(result: ExportResult): Promise<void> {
-    inMemoryExports[result.id] = result;
-    try {
-      const list = await this.getAllExports();
-      const index = list.findIndex(e => e.id === result.id);
-      if (index >= 0) {
-        list[index] = result;
-      } else {
-        list.unshift(result);
+    return this.enqueueWrite(async () => {
+      try {
+        const list = await this.getAllExports();
+        const index = list.findIndex(e => e.id === result.id);
+        if (index >= 0) {
+          list[index] = result;
+        } else {
+          list.unshift(result);
+        }
+        await this.writeString(EXPORTS_KEY, JSON.stringify(list));
+        inMemoryExports[result.id] = result;
+      } catch (e) {
+        console.warn('Failed to save export result:', e);
+        throw e;
       }
-      await this.writeString(EXPORTS_KEY, JSON.stringify(list));
-    } catch (e) {
-      console.warn('Failed to save export result:', e);
-    }
+    });
   }
 
   public static async deleteExport(id: string): Promise<void> {
-    delete inMemoryExports[id];
-    try {
-      const list = await this.getAllExports();
-      const filtered = list.filter(e => e.id !== id);
-      await this.writeString(EXPORTS_KEY, JSON.stringify(filtered));
-    } catch (e) {
-      console.warn('Failed to delete export:', e);
-    }
+    return this.enqueueWrite(async () => {
+      try {
+        const list = await this.getAllExports();
+        const filtered = list.filter(e => e.id !== id);
+        await this.writeString(EXPORTS_KEY, JSON.stringify(filtered));
+        delete inMemoryExports[id];
+      } catch (e) {
+        console.warn('Failed to delete export:', e);
+        throw e;
+      }
+    });
   }
 
   /**

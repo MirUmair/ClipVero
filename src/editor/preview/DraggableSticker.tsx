@@ -34,6 +34,8 @@ export const DraggableSticker: React.FC<DraggableStickerProps> = ({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: sticker.x, y: sticker.y });
+  const configRef = useRef({ sticker, previewWidth, previewHeight, onSelect, onUpdate });
+  configRef.current = { sticker, previewWidth, previewHeight, onSelect, onUpdate };
 
   useEffect(() => {
     dragStartRef.current = { x: sticker.x, y: sticker.y };
@@ -48,11 +50,13 @@ export const DraggableSticker: React.FC<DraggableStickerProps> = ({
       onPanResponderGrant: () => {
         setIsDragging(true);
         HapticsService.light();
-        onSelect();
-        dragStartRef.current = { x: sticker.x, y: sticker.y };
+        const config = configRef.current;
+        config.onSelect();
+        dragStartRef.current = { x: config.sticker.x, y: config.sticker.y };
         setDragOffset({ x: 0, y: 0 });
       },
       onPanResponderMove: (_, gestureState) => {
+        const { previewWidth, previewHeight } = configRef.current;
         if (previewWidth > 0 && previewHeight > 0) {
           const deltaX = gestureState.dx / previewWidth;
           const deltaY = gestureState.dy / previewHeight;
@@ -60,6 +64,7 @@ export const DraggableSticker: React.FC<DraggableStickerProps> = ({
         }
       },
       onPanResponderRelease: (_, gestureState) => {
+        const { sticker, previewWidth, previewHeight, onUpdate } = configRef.current;
         setIsDragging(false);
         if (
           previewWidth > 0 &&
@@ -72,7 +77,7 @@ export const DraggableSticker: React.FC<DraggableStickerProps> = ({
           const newY = Math.max(0.05, Math.min(0.95, dragStartRef.current.y + deltaY));
           setDragOffset({ x: 0, y: 0 });
           dragStartRef.current = { x: newX, y: newY };
-          HapticsService.selection();
+          HapticsService.light();
           onUpdate({
             ...sticker,
             x: Number(newX.toFixed(3)),

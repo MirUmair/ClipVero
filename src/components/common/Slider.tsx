@@ -40,15 +40,19 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
   const trackRef = useRef<any>(null);
   const currentValRef = useRef(value);
   currentValRef.current = value;
+  const configRef = useRef({ min, max, step, trackWidth, onValueChange });
+  configRef.current = { min, max, step, trackWidth, onValueChange };
+  const dragStartX = useRef(0);
 
   const normalized = (value - min) / (max - min);
   const progressPercent = Math.max(0, Math.min(1, normalized));
 
   const calculateValueFromX = (x: number) => {
-    const ratio = clamp(x / trackWidth, 0, 1);
-    const rawVal = min + ratio * (max - min);
-    const steppedVal = Math.round(rawVal / step) * step;
-    return clamp(steppedVal, min, max);
+    const config = configRef.current;
+    const ratio = clamp(x / config.trackWidth, 0, 1);
+    const rawVal = config.min + ratio * (config.max - config.min);
+    const steppedVal = config.min + Math.round((rawVal - config.min) / config.step) * config.step;
+    return clamp(steppedVal, config.min, config.max);
   };
 
   const panResponder = useRef(
@@ -58,17 +62,18 @@ export const CustomSlider: React.FC<CustomSliderProps> = ({
       onPanResponderGrant: evt => {
         HapticsService.light();
         const touchX = evt.nativeEvent.locationX;
+        dragStartX.current = touchX;
         const newVal = calculateValueFromX(touchX);
-        onValueChange(newVal);
+        currentValRef.current = newVal;
+        configRef.current.onValueChange(newVal);
       },
       onPanResponderMove: (_, gestureState) => {
-        const startX =
-          ((currentValRef.current - min) / (max - min)) * trackWidth;
-        const currentX = startX + gestureState.dx;
+        const currentX = dragStartX.current + gestureState.dx;
         const newVal = calculateValueFromX(currentX);
         if (newVal !== currentValRef.current) {
           HapticsService.light();
-          onValueChange(newVal);
+          currentValRef.current = newVal;
+          configRef.current.onValueChange(newVal);
         }
       },
     }),

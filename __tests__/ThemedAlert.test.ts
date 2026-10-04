@@ -6,7 +6,7 @@ describe('ThemedAlert Service', () => {
   });
 
   it('subscribes and receives alert payload', () => {
-    let received: AlertOptions | null = null;
+    let received = null as AlertOptions | null;
     const unsub = ThemedAlert.subscribe(alert => {
       received = alert;
     });
@@ -22,7 +22,7 @@ describe('ThemedAlert Service', () => {
   });
 
   it('infers error type for deletion alerts', () => {
-    let received: AlertOptions | null = null;
+    let received = null as AlertOptions | null;
     const unsub = ThemedAlert.subscribe(alert => {
       received = alert;
     });
@@ -38,7 +38,7 @@ describe('ThemedAlert Service', () => {
   });
 
   it('infers success type for success messages', () => {
-    let received: AlertOptions | null = null;
+    let received = null as AlertOptions | null;
     const unsub = ThemedAlert.subscribe(alert => {
       received = alert;
     });
@@ -49,7 +49,7 @@ describe('ThemedAlert Service', () => {
   });
 
   it('handles confirm helper correctly', () => {
-    let received: AlertOptions | null = null;
+    let received = null as AlertOptions | null;
     const unsub = ThemedAlert.subscribe(alert => {
       received = alert;
     });

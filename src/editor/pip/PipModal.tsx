@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -93,9 +93,9 @@ export const PipModal: React.FC<PipModalProps> = ({
         <View style={styles.topActions}>
           <Button
             title="+ Add Overlay Video"
-            size="small"
+            size="sm"
             variant="primary"
-            icon="plus"
+            icon={<AppIcon name="plus" size={16} color={colors.text} />}
             onPress={handlePickMediaForPip}
           />
         </View>
@@ -180,8 +180,8 @@ export const PipModal: React.FC<PipModalProps> = ({
               </View>
               <CustomSlider
                 value={activePip.scale}
-                minimumValue={0.15}
-                maximumValue={0.8}
+                min={0.15}
+                max={0.8}
                 step={0.05}
                 onValueChange={val => onUpdatePip({ ...activePip, scale: val })}
               />
@@ -197,8 +197,8 @@ export const PipModal: React.FC<PipModalProps> = ({
               </View>
               <CustomSlider
                 value={activePip.opacity}
-                minimumValue={0.1}
-                maximumValue={1.0}
+                min={0.1}
+                max={1.0}
                 step={0.05}
                 onValueChange={val =>
                   onUpdatePip({ ...activePip, opacity: val })
@@ -216,8 +216,8 @@ export const PipModal: React.FC<PipModalProps> = ({
               </View>
               <CustomSlider
                 value={activePip.volume}
-                minimumValue={0}
-                maximumValue={1.0}
+                min={0}
+                max={1.0}
                 step={0.05}
                 onValueChange={val =>
                   onUpdatePip({ ...activePip, volume: val })
@@ -229,9 +229,9 @@ export const PipModal: React.FC<PipModalProps> = ({
             <View style={styles.deleteRow}>
               <Button
                 title="Remove PIP Overlay"
-                size="small"
+                size="sm"
                 variant="danger"
-                icon="trash"
+                icon={<AppIcon name="trash" size={16} color={colors.text} />}
                 onPress={() => {
                   HapticsService.snap();
                   onDeletePip(activePip.id);

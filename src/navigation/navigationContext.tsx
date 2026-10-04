@@ -8,8 +8,10 @@ import React, {
   useContext,
   useState,
   useCallback,
+  useEffect,
   ReactNode,
 } from 'react';
+import { BackHandler } from 'react-native';
 import { Project, MediaClip } from '../types/project';
 
 export type ScreenName = 'Home' | 'MediaPicker' | 'Editor' | 'Export';
@@ -44,7 +46,15 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({
 
   const navigate = useCallback(
     (screen: ScreenName, params: NavigationParams = {}) => {
-      setHistory(prev => [...prev, { screen, params }]);
+      setHistory(prev => {
+        if (screen === 'Home') return [{ screen, params }];
+        const updated = prev.map(entry =>
+          entry.screen === 'Editor' && params.project?.id === entry.params.project?.id
+            ? { ...entry, params: { ...entry.params, project: params.project } }
+            : entry,
+        );
+        return [...updated, { screen, params }];
+      });
     },
     [],
   );
@@ -55,6 +65,15 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({
       return prev.slice(0, -1);
     });
   }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (history.length <= 1) return false;
+      goBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [history.length, goBack]);
 
   return (
     <NavigationContext.Provider

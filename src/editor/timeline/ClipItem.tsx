@@ -35,6 +35,9 @@ export const ClipItem: React.FC<ClipItemProps> = ({
   const trimEndRef = useRef(clip.trimEnd);
   trimStartRef.current = clip.trimStart;
   trimEndRef.current = clip.trimEnd;
+  const configRef = useRef({ clip, pixelsPerSecond, onTrimChange });
+  configRef.current = { clip, pixelsPerSecond, onTrimChange };
+  const dragBoundsRef = useRef({ start: clip.trimStart, end: clip.trimEnd });
 
   const numThumbs = Math.max(4, Math.min(10, Math.ceil(clipWidth / 48)));
 
@@ -55,18 +58,21 @@ export const ClipItem: React.FC<ClipItemProps> = ({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
+        dragBoundsRef.current = { start: trimStartRef.current, end: trimEndRef.current };
         HapticsService.light();
       },
       onPanResponderMove: (_, gestureState) => {
-        const deltaSeconds = gestureState.dx / pixelsPerSecond;
+        const config = configRef.current;
+        const bounds = dragBoundsRef.current;
+        const deltaSeconds = gestureState.dx * config.clip.speed / config.pixelsPerSecond;
         const newStart = Math.max(
           0,
           Math.min(
-            trimEndRef.current - 0.2,
-            trimStartRef.current + deltaSeconds,
+            bounds.end - 0.2,
+            bounds.start + deltaSeconds,
           ),
         );
-        onTrimChange(Number(newStart.toFixed(2)), trimEndRef.current);
+        config.onTrimChange(Number(newStart.toFixed(2)), bounds.end);
       },
       onPanResponderRelease: () => {
         HapticsService.snap();
@@ -79,18 +85,21 @@ export const ClipItem: React.FC<ClipItemProps> = ({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
+        dragBoundsRef.current = { start: trimStartRef.current, end: trimEndRef.current };
         HapticsService.light();
       },
       onPanResponderMove: (_, gestureState) => {
-        const deltaSeconds = gestureState.dx / pixelsPerSecond;
+        const config = configRef.current;
+        const bounds = dragBoundsRef.current;
+        const deltaSeconds = gestureState.dx * config.clip.speed / config.pixelsPerSecond;
         const newEnd = Math.min(
-          clip.originalDuration,
+          config.clip.originalDuration,
           Math.max(
-            trimStartRef.current + 0.2,
-            trimEndRef.current + deltaSeconds,
+            bounds.start + 0.2,
+            bounds.end + deltaSeconds,
           ),
         );
-        onTrimChange(trimStartRef.current, Number(newEnd.toFixed(2)));
+        config.onTrimChange(bounds.start, Number(newEnd.toFixed(2)));
       },
       onPanResponderRelease: () => {
         HapticsService.snap();

@@ -72,6 +72,12 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+def releaseStoreFile = System.getenv('CLIPVERO_UPLOAD_STORE_FILE')
+def releaseStorePassword = System.getenv('CLIPVERO_UPLOAD_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('CLIPVERO_UPLOAD_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('CLIPVERO_UPLOAD_KEY_PASSWORD')
+def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -86,6 +92,14 @@ android {
         versionName "1.0"
     }
     signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -98,9 +112,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (hasReleaseSigning) signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
@@ -122,4 +134,3 @@ dependencies {
     implementation("androidx.media3:media3-effect:1.5.1")
     implementation("androidx.media3:media3-common:1.5.1")
 }
-

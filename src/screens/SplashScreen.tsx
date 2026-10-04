@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -113,7 +113,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
       style={[styles.container, { opacity: screenFade }]}
       pointerEvents={screenFade ? 'auto' : 'none'}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#080B14" translucent />
+      <StatusBar barStyle="light-content" />
 
       {/* Ambient Radial Glowing Orbs */}
       <Animated.View

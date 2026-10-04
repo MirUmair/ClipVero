@@ -525,7 +525,7 @@ describe('Clipvero Media & Timeline Engine', () => {
         flipHorizontal: false,
         flipVertical: false,
         crop: null,
-        filterId: 'vibrant',
+        filterId: 'vivid',
         adjustments: {
           brightness: 10,
           contrast: 0,
@@ -537,6 +537,8 @@ describe('Clipvero Media & Timeline Engine', () => {
           sharpen: 0,
         },
         transition: { type: 'fade', duration: 0.5 },
+        width: 1080,
+        height: 1920,
       };
 
       const existingProject: Project = {
@@ -561,6 +563,8 @@ describe('Clipvero Media & Timeline Engine', () => {
             rotation: 0,
             opacity: 1,
             textAlign: 'center',
+            fontFamily: 'System',
+            animation: 'none',
           },
         ],
         stickerLayers: [],
@@ -601,6 +605,8 @@ describe('Clipvero Media & Timeline Engine', () => {
           sharpen: 0,
         },
         transition: { type: 'none', duration: 0.5 },
+        width: 1080,
+        height: 1920,
       };
 
       // Append clip2 to existingProject
@@ -615,7 +621,7 @@ describe('Clipvero Media & Timeline Engine', () => {
       expect(updatedProject.name).toBe(existingProject.name);
       expect(updatedProject.clips.length).toBe(2);
       expect(updatedProject.clips[0].id).toBe('clip_1');
-      expect(updatedProject.clips[0].filterId).toBe('vibrant');
+      expect(updatedProject.clips[0].filterId).toBe('vivid');
       expect(updatedProject.clips[1].id).toBe('clip_2');
       expect(updatedProject.textLayers.length).toBe(1);
       expect(calculateProjectTotalDuration(updatedProject.clips)).toBe(13.0);

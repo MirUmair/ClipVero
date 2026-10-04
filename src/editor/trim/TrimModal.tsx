@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: borderRadius.pill,
+    borderRadius: borderRadius.round,
   },
   presetChipText: {
     ...typography.caption,

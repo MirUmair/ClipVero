@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   card: {
     width: Math.min(SCREEN_WIDTH - 48, 360),

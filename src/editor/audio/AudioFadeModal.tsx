@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: colors.surfaceElevated,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.round,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderWidth: 1,

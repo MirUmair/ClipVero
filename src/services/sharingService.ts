@@ -3,7 +3,7 @@
  * Uses native platform share sheet without third-party platform SDKs
  */
 
-import { Share, Platform } from 'react-native';
+import { Share, Platform, NativeModules } from 'react-native';
 
 export class SharingService {
   /**
@@ -14,14 +14,17 @@ export class SharingService {
     title: string = 'Clipvero Video',
   ): Promise<boolean> {
     try {
+      if (Platform.OS === 'android') {
+        if (!NativeModules.ClipveroMediaEngine?.shareVideo) {
+          throw new Error('Video sharing is unavailable on this device.');
+        }
+        return await NativeModules.ClipveroMediaEngine.shareVideo(filePath, title);
+      }
       const shareUrl = filePath.startsWith('file://')
         ? filePath
         : `file://${filePath}`;
 
-      const shareMessage =
-        Platform.OS === 'android'
-          ? `${title || 'ClipVero Video'}\n${shareUrl}`
-          : title || 'Check out my video created with ClipVero!';
+      const shareMessage = title || 'Check out my video created with ClipVero!';
 
       const result = await Share.share({
         title: title || 'ClipVero Video',

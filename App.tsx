@@ -21,7 +21,7 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor="#080B14" translucent />
+      <StatusBar barStyle="light-content" />
       <View style={styles.container}>
         <ErrorBoundary>
           {isSplashVisible ? (

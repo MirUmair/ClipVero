@@ -1,5 +1,10 @@
 import { StickerLayer, AudioTrack, Project } from '../src/types/project';
 import { MediaEngine } from '../src/media/mediaEngine';
+import { NativeModules } from 'react-native';
+
+jest.mock('react-native', () => ({
+  NativeModules: { ClipveroMediaEngine: { exportProject: jest.fn() } },
+}));
 
 describe('Sticker and Fade Functionality', () => {
   const initialSticker: StickerLayer = {
@@ -98,27 +103,34 @@ describe('Sticker and Fade Functionality', () => {
         },
       ],
       aspectRatio: '9:16',
+      canvasBackground: { type: 'fit' },
       audioTracks: [
         {
           ...initialAudioTrack,
-          fadeInDuration: 1.0,
-          fadeOutDuration: 1.0,
+          volume: 1,
         },
       ],
       textLayers: [],
-      stickerLayers: [initialSticker],
+      stickerLayers: [],
       pipLayers: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
       exportSettings: {
         resolution: '1080p',
-        fps: 30,
+        fps: 'original',
         quality: 'recommended',
         format: 'mp4',
       },
     };
 
+    NativeModules.ClipveroMediaEngine.exportProject.mockResolvedValueOnce({
+      outputPath: 'file:///exports/test.mp4', fileSize: 1000, resolution: '1080x1920',
+    });
     const res = await MediaEngine.exportProject(testProject);
+    const config = JSON.parse(NativeModules.ClipveroMediaEngine.exportProject.mock.calls[0][0]);
+    expect(config.aspectRatio).toBe('9:16');
+    expect(config.audioTracks[0].uri).toBe(initialAudioTrack.uri);
+    expect(config.clips[0].type).toBe('video');
     expect(res).toBeDefined();
     expect(res.outputPath).toBeDefined();
     expect(res.fileSize).toBeGreaterThan(0);

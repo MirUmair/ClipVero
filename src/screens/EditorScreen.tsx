@@ -5,7 +5,7 @@ import React, {
   useRef,
   useCallback,
 } from 'react';
-import { View, StyleSheet, TextInput } from 'react-native';
+import { View, StyleSheet, TextInput, AppState } from 'react-native';
 import { ThemedAlert as Alert } from '../services/alertService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
@@ -116,10 +116,24 @@ export const EditorScreen: React.FC = () => {
   });
 
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active') {
+        setIsPlaying(false);
+        AutosaveManager.flush();
+      }
+    });
+    return () => {
+      subscription.remove();
+      AutosaveManager.flush();
+    };
+  }, []);
+  const incomingProjectRef = useRef(navigation.params?.project);
 
   // Synchronize when returning from MediaPicker with appended clips
   useEffect(() => {
-    if (navigation.params?.project) {
+    if (navigation.params?.project && incomingProjectRef.current !== navigation.params.project) {
+      incomingProjectRef.current = navigation.params.project;
       const incoming = navigation.params.project;
       if (
         incoming.id !== project.id ||
@@ -137,7 +151,7 @@ export const EditorScreen: React.FC = () => {
         }
       }
     }
-  }, [navigation.params?.project]);
+  }, [navigation.params?.project, project.id, project.updatedAt, project.clips.length]);
 
   // Active toolbar category
   const [activeCategory, setActiveCategory] = useState<MainCategory | null>(
@@ -292,7 +306,7 @@ export const EditorScreen: React.FC = () => {
 
       const isNativeVideoActive = !!(audioClip && !audioClip.isReversed);
       MediaEngine.playPreviewAudio({
-        clipUri: isNativeVideoActive ? null : audioClip?.uri,
+        clipUri: isNativeVideoActive ? undefined : audioClip?.uri,
         clipVolume: isNativeVideoActive ? 0 : (audioClip?.volume ?? 1.0),
         clipMuted: isNativeVideoActive ? true : (audioClip?.isMuted ?? false),
         clipSpeed: audioClip?.speed ?? 1.0,
@@ -613,7 +627,7 @@ export const EditorScreen: React.FC = () => {
         ? {
             ...c,
             speed,
-            speedCurve: { preset: 'none', points: [] },
+            speedCurve: { preset: 'none' as const, points: [] },
             duration: effectiveDuration,
           }
         : c,
